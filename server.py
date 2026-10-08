@@ -213,6 +213,12 @@ class Vault:
 
 
 class Handler(BaseHTTPRequestHandler):
+    def cloud_config(self):
+        return getattr(self.server, 'cloud_config', None)
+
+    def vault(self):
+        return self.remote_vault if self.cloud_config() else self.server.vault
+
     def allowed_hosts(self):
         hosts = {f'127.0.0.1:{self.server.server_port}', f'localhost:{self.server.server_port}'}
         if getattr(self.server, 'public_host', None):
@@ -220,6 +226,20 @@ class Handler(BaseHTTPRequestHandler):
         return hosts
 
     def authenticated(self):
+        config = self.cloud_config()
+        if config:
+            from cloud_store import CloudVault, CloudError
+            authorization = self.headers.get('Authorization', '')
+            if not authorization.startswith('Bearer ') or len(authorization) > 16384:
+                self.send(401, {'error': 'ログインが必要です'})
+                return False
+            self.remote_vault = CloudVault(*config[:2], authorization[7:], config[2], self.server.cloud_lock)
+            try:
+                self.remote_vault.verify()
+            except CloudError:
+                self.send(401, {'error': 'ログインが必要です。接続設定または認証を確認してください。'})
+                return False
+            return True
         password = getattr(self.server, 'password', None)
         if password is None:
             return True
@@ -259,35 +279,49 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        if self.headers.get('Host', '') not in self.allowed_hosts():
-            self.send(403, {'error': 'ローカルからアクセスしてください'})
-            return
         parsed = urlsplit(self.path)
         if parsed.path == '/healthz':
             self.send(200, {'status': 'ok'})
+            return
+        if self.headers.get('Host', '') not in self.allowed_hosts():
+            self.send(403, {'error': 'ローカルからアクセスしてください'})
+            return
+        if parsed.path == '/api/config':
+            self.send(200, {'storage': 'cloud' if self.cloud_config() else 'local'})
+            return
+        public_files = {'/': 'index.html', '/app.js': 'app.js', '/style.css': 'style.css'}
+        if self.cloud_config() and parsed.path in public_files:
+            name = public_files[parsed.path]
+            self.send(200, (WEB / name).read_bytes(), mimetypes.guess_type(name)[0] + '; charset=utf-8')
             return
         if not self.authenticated():
             return
         try:
             if parsed.path == '/api/records':
-                with self.server.vault.lock:
-                    records = self.server.vault.records()
+                vault = self.vault()
+                with vault.lock:
+                    records = vault.records()
                 self.send(200, {'records': records})
             elif parsed.path.startswith('/api/file/'):
                 parts = unquote(parsed.path).split('/')
                 if len(parts) != 5:
                     raise ValueError('ファイルが見つかりません')
-                record = self.server.vault.get(parts[3])
+                vault = self.vault()
+                record = vault.get(parts[3])
                 file = next((f for f in record['files'] if f['id'] == parts[4]), None)
                 if not file:
                     raise ValueError('ファイルが見つかりません')
-                path = (self.server.vault.root / record['folder'] / file['path']).resolve()
-                if not path.is_relative_to(self.server.vault.root):
-                    raise ValueError('不正なパスです')
+                if self.cloud_config():
+                    contents = vault.read_file(record, file)
+                else:
+                    path = (vault.root / record['folder'] / file['path']).resolve()
+                    if not path.is_relative_to(vault.root):
+                        raise ValueError('不正なパスです')
+                    contents = path.read_bytes()
                 safe_mimes = {'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif', 'video/mp4', 'video/quicktime', 'video/webm', 'audio/mpeg', 'audio/wav', 'audio/ogg'}
                 mime = file['mime'] if file['mime'] in safe_mimes else 'application/octet-stream'
                 download = 'download' in parse_qs(parsed.query, keep_blank_values=True) or mime == 'application/octet-stream'
-                self.send(200, path.read_bytes(), mime, file['name'] if download else None)
+                self.send(200, contents, mime, file['name'] if download else None)
             else:
                 name = {'/': 'index.html', '/app.js': 'app.js', '/style.css': 'style.css'}.get(parsed.path)
                 if not name:
@@ -310,23 +344,47 @@ class Handler(BaseHTTPRequestHandler):
         if host not in allowed or (origin and origin not in origins):
             self.send(403, {'error': 'ローカルの同一オリジンからアクセスしてください'})
             return
-        if not self.authenticated():
+        auth_operation = bool(self.cloud_config() and self.path in {'/api/login', '/api/refresh'})
+        if not auth_operation and not self.authenticated():
             return
         if not self.headers.get('Content-Type', '').startswith('application/json'):
             self.send(415, {'error': 'JSON形式で送信してください'})
             return
         try:
             size = int(self.headers.get('Content-Length', '0'))
-            if not 0 < size <= MAX_REQUEST:
-                self.send(413, {'error': '1回の投入は合計140MB程度までです。分けて投入してください。'})
+            if auth_operation and size > 16384:
+                self.send(413, {'error': 'リクエストが大きすぎます'})
+                return
+            limit = 72 * 1024 * 1024 if self.cloud_config() else MAX_REQUEST
+            if not 0 < size <= limit:
+                self.send(413, {'error': '投入サイズが大きすぎます。クラウドでは合計50MB、ローカルでは合計140MBまでに分けて投入してください。'})
                 return
             payload = json.loads(self.rfile.read(size))
-            vault = self.server.vault
+            if auth_operation:
+                from cloud_store import request, CloudVault, CloudError
+                config = self.cloud_config()
+                grant = 'password' if self.path == '/api/login' else 'refresh_token'
+                fields = {'email': payload.get('email', ''), 'password': payload.get('password', '')} if grant == 'password' else {'refresh_token': payload.get('refresh_token', '')}
+                try:
+                    session = request(config[0], config[1], None, '/auth/v1/token?grant_type=' + grant, 'POST', fields)
+                    CloudVault(config[0], config[1], session['access_token'], config[2]).verify()
+                except (CloudError, KeyError):
+                    self.send(401, {'error': 'ログインできませんでした。認証情報・接続設定を確認してください。'})
+                    return
+                self.send(200, {field: session[field] for field in ('access_token', 'refresh_token', 'expires_in')})
+                return
+            vault = self.vault()
             with vault.lock:
                 if self.path == '/api/import':
                     groups = payload['groups']
                     if not isinstance(groups, list) or not groups:
                         raise ValueError('ファイルを選択してください')
+                    if self.cloud_config():
+                        encoded_files = [item.get('data', '') for group in groups if isinstance(group, dict) for item in group.get('files', []) if isinstance(item, dict)]
+                        total = sum((len(value) // 4) * 3 - len(value) + len(value.rstrip('=')) for value in encoded_files if isinstance(value, str))
+                        if total > 50 * 1024 * 1024:
+                            self.send(413, {'error': '無料クラウド版は1回の投入合計50MBまでです'})
+                            return
                     # Report per-group results so an interrupted batch is never silently lost.
                     saved = []
                     errors = []
@@ -344,6 +402,9 @@ class Handler(BaseHTTPRequestHandler):
                     self.send(200, vault.update(payload['id'], payload['changes']))
                 elif self.path == '/api/transfer':
                     self.send(200, vault.transfer(payload['source'], payload['target'], payload['files']))
+                elif self.path == '/api/logout' and self.cloud_config():
+                    vault.call('/auth/v1/logout', 'POST', {})
+                    self.send(200, {'status': 'signed_out'})
                 else:
                     self.send(404, {'error': '見つかりません'})
         except (ValueError, KeyError, TypeError) as error:
@@ -360,15 +421,37 @@ def main():
     public_host = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
     public = bool(public_host or os.environ.get('RENDER'))
     password = os.environ.get('IDEA_VAULT_PASSWORD')
-    if public and (not public_host or not password or len(password) < 24):
-        parser.error('Render公開にはRENDER_EXTERNAL_HOSTNAMEと24文字以上のIDEA_VAULT_PASSWORDが必要です')
-    if public and (not args.data_dir.startswith('/var/data/') or not Path('/var/data').is_mount()):
-        parser.error('Render公開には/var/dataのPersistent Diskとその中の保存先が必要です')
+    cloud = os.environ.get('IDEA_VAULT_STORAGE') == 'supabase'
+    config = None
+    if cloud:
+        url, public_key, owner = (os.environ.get(n, '') for n in ('SUPABASE_URL', 'SUPABASE_PUBLISHABLE_KEY', 'IDEA_VAULT_OWNER_ID'))
+        if not re.fullmatch(r'https://[a-z0-9-]+\.supabase\.co', url) or not public_key or not owner:
+            parser.error('SupabaseのURL・publishable/anonキー・本人のユーザーUUIDを設定してください')
+        try:
+            uuid.UUID(owner)
+        except ValueError:
+            parser.error('IDEA_VAULT_OWNER_IDは本人のSupabaseユーザーUUIDにしてください')
+        if public_key.startswith('sb_secret_'):
+            parser.error('service-role/secretキーを使わずpublishable/anonキーを設定してください')
+        if public_key.startswith('eyJ'):
+            try:
+                claims = public_key.split('.')[1]
+                role = json.loads(base64.urlsafe_b64decode(claims + '=' * (-len(claims) % 4))).get('role')
+                if role != 'anon':
+                    parser.error('Supabaseキーはanonキーを使用してください')
+            except (ValueError, IndexError):
+                parser.error('Supabaseの公開キー形式を確認してください')
+        config = (url, public_key, owner)
+    if public and (not public_host or not cloud):
+        parser.error('Render無料公開ではSupabase保存と本人ログインの設定が必須です。ローカル保存へは切り替えません')
     server = ThreadingHTTPServer(('0.0.0.0' if public else '127.0.0.1', args.port), Handler)
     server.public_host = public_host
-    server.password = password
-    server.vault = Vault(args.data_dir)
-    print(f'IDEA VAULT: http://127.0.0.1:{args.port} / data: {server.vault.root}', flush=True)
+    server.password = password if not cloud else None
+    server.cloud_config = config
+    server.cloud_lock = threading.RLock()
+    if not cloud:
+        server.vault = Vault(args.data_dir)
+    print(f'IDEA VAULT: port {args.port} / storage: {"Supabase (private)" if cloud else server.vault.root}', flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

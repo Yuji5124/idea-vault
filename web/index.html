@@ -18,7 +18,7 @@
   <div class="sidebar-bottom"><span class="statusdot"></span> LOCAL STORAGE<span>あなたの発想を、あなたの手元に。</span></div>
 </aside>
 <main>
-  <header><div><span class="eyebrow">A PLACE FOR YOUR NEXT IDEA</span><h1 id="pageTitle">すべての記録<span class="heading-dot">.</span></h1></div><button class="primary" id="newNote">＋ メモを追加</button></header>
+  <header><div><span class="eyebrow">A PLACE FOR YOUR NEXT IDEA</span><h1 id="pageTitle">すべての記録<span class="heading-dot">.</span></h1></div><div class="header-actions"><button class="secondary" id="logout" hidden>ログアウト</button><button class="primary" id="newNote">＋ メモを追加</button></div></header>
   <p class="intro">ひらめきも、まだ名前のない思いつきも。<br class="mobile-break">まずはここに、置いておこう。</p>
   <section class="dropzone" id="dropzone" aria-label="ファイルをドラッグ＆ドロップ">
     <div class="drop-icon">↓</div><h2>ここにファイルをドロップ</h2><p>画像、メモ、資料。分類は、あとからで大丈夫。</p>
@@ -27,6 +27,7 @@
     <input type="file" id="fileInput" multiple hidden><input type="file" id="folderInput" webkitdirectory multiple hidden>
   </section>
   <div class="capture-note"><span>↳</span> ドロップするだけでINBOXへ。保存日を自動で付けて、大切に保管します。</div>
+  <p id="cloudNotice" class="hint" hidden>本人専用のクラウド保存 · 1ファイル50MBまで · 無料枠の容量にご注意ください</p>
   <section class="library">
     <div class="library-heading"><h2 id="sectionTitle">RECENT <span>最近のひらめき</span></h2><span id="resultCount">0 records</span></div>
     <div class="filters"><label class="searchbox"><span>⌕</span><input id="search" type="search" placeholder="タイトル、タグ、原理から探す…" aria-label="キーワード検索"><kbd>/</kbd></label><select id="rating" aria-label="JIMA FILTERで絞り込む"><option value="">JIMA FILTER · すべて</option><option>GOOD</option><option>HOLD</option><option>BAD</option><option>未評価</option></select></div>
@@ -36,6 +37,7 @@
   <footer><span>IDEA VAULT</span><span>SOURCE → PRINCIPLE → IDEA → VISUAL</span><span>KEEP THE SPARK ALIVE.</span></footer>
 </main>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<dialog id="loginDialog"><form id="loginForm"><span class="eyebrow">YOUR PRIVATE IDEA VAULT</span><h2>保管庫にログイン</h2><p class="hint">登録済みの本人アカウントでログインしてください。保存データは非公開です。</p><label>メールアドレス<input name="email" type="email" required autocomplete="username"></label><label>パスワード<input name="password" type="password" required autocomplete="current-password"></label><p id="loginError" class="hint" role="alert"></p><div class="dialog-actions"><button class="primary" type="submit">ログイン</button></div></form></dialog>
 <dialog id="detail"><form id="editForm">
   <div class="dialog-header"><span class="eyebrow">YOUR IDEA, IN DETAIL</span><button type="button" class="iconbutton" id="closeDetail" aria-label="閉じる">×</button></div>
   <div id="detailPreview" class="detail-preview"></div>

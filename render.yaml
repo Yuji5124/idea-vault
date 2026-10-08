@@ -2,7 +2,7 @@ services:
   - type: web
     name: idea-vault
     runtime: python
-    plan: starter
+    plan: free
     buildCommand: python3 -m unittest discover -s tests -v
     startCommand: python3 server.py
     healthCheckPath: /healthz
@@ -10,11 +10,11 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.14
-      - key: IDEA_VAULT_DATA
-        value: /var/data/vault
-      - key: IDEA_VAULT_PASSWORD
-        generateValue: true
-    disk:
-      name: idea-vault-data
-      mountPath: /var/data
-      sizeGB: 1
+      - key: IDEA_VAULT_STORAGE
+        value: supabase
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: IDEA_VAULT_OWNER_ID
+        sync: false

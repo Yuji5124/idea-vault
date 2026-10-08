@@ -112,19 +112,73 @@ VAULT_TEST_URL=http://127.0.0.1:8766 CHROMIUM_PATH=/usr/bin/chromium node tests/
 
 `CHROMIUM_PATH` は任意です。省略時はPlaywrightのChromiumを使用します。実行結果と検証範囲は [TEST_RESULTS.md](TEST_RESULTS.md) を参照してください。
 
-## Renderでの公開（ログイン必須）
+## Render無料構成＋Supabase無料枠での公開
 
-`render.yaml` にWeb ServiceとPersistent DiskのBlueprintを用意しています。RenderのアカウントでGitHubリポジトリを接続し、New → Blueprintからこのファイルを含むブランチを選んで作成してください。
+`render.yaml` は **Render Free Web Service** を指定し、有料ディスクを作成しません。保存先は **Supabase Freeのデータベース＋非公開Storage**です。複数端末から本人のアカウントでログインすると、同じ記録と添付ファイルを参照できます。
 
-- **有料のStarterプランと1GBのPersistent Diskを使用します。** Render画面で現在の料金を確認してから作成してください。無料サービスの一時ディスクには個人データを保存しません。
-- RenderがHTTPS URLを発行します。URLは作成完了後のサービス画面に表示されます。クラウド環境のPublishとは別の操作です。
-- ユーザー名は **jima**。パスワードはRenderの環境変数 `IDEA_VAULT_PASSWORD` に自動生成されます。Renderの管理画面で確認し、パスワードマネージャーへ保管してください。チャット・Git・URLには記載しないでください。
-- アクセスするとブラウザ標準のログインダイアログが出ます。画面、JavaScript、metadata API、添付ダウンロード、更新APIすべてに認証が必要です。`/healthz` のみデータを含まないヘルス確認用に公開します。
-- `/var/data/vault` に保存し、データをアプリのコードや公開ディレクトリに置きません。ログにファイル名や検索内容を出しません。HTTPSのRenderホストのみを許可し、別サイトからの書き込みを拒否します。
-- 公開環境でパスワードが未設定／24文字未満、またはPersistent Diskがマウントされていない場合は起動を拒否します。パスワードを変更して再起動すれば、古い認証情報は使えなくなります。ブラウザが認証を保持するため、共有PCでは使わず、利用後はブラウザを終了してください。
-- 再デプロイ時にもディスク上のファイルは残ります。ただし、サービス／ディスク削除や故障に備えて別のバックアップを保持してください。Render上ではSSHなどの管理機能から保存先全体を安全に取得してバックアップします。
+無料枠は容量・転送量・稼働時間に制限があります。Renderは未使用時にスリープして初回表示が遅くなることがあり、Supabaseも無料プロジェクトの休止・利用枠制限があります。各サービスの現在の条件を管理画面で確認し、有料へのアップグレードは選択しないでください。無制限・常時稼働を保証する構成ではありません。
 
-Render運営者／アカウント管理者には保存先への管理アクセスがあります。これはエンドツーエンド暗号化ではありません。個人情報をさらに暗号化して保存する機能、アカウントごとの権限、MFAは未実装です。Renderアカウント自身のMFAも有効にしてください。
+### 1. SupabaseのFreeプロジェクトを準備
+
+1. 自分のSupabaseアカウントで **Free** プロジェクトを作成します。
+2. SQL Editorでリポジトリの `supabase.sql` を実行します。`vault_records` テーブルと **private** な `idea-vault` バケットを作成し、本人のユーザーIDに限定するRow Level Securityポリシーを設定します。既に同名のテーブルやポリシーがある場合は内容を確認してから実行してください。
+3. Authentication → Usersで本人用ユーザーを作成します。メールと十分に長い固有のパスワードを設定します。管理画面で作成する場合は確認済みユーザーにしてください。
+4. Authenticationの設定で **新規ユーザーのサインアップを無効**にします。このアプリには新規登録画面はありません。
+5. 本人ユーザーのUUID、プロジェクトURL（`https://PROJECT_ID.supabase.co`）、**publishableキーまたは旧anonキー**を確認します。`service_role` / `sb_secret_` キーは使用しません。
+6. Storageの `idea-vault` が **Public OFF** であることと、SQLのテーブル／Storageポリシーが有効であることを確認します。他の既存ポリシーが広くアクセスを許可していないことも確認してください。
+
+### 2. RenderのFreeサービスを作成
+
+RenderのNew → Blueprintでこのリポジトリと `codex/idea-vault-render` ブランチを選び、`render.yaml` を読み込みます。**Free** であり、ディスクが追加されていないことを確認してください。環境変数の入力欄で次を設定します。
+
+| 名前 | 設定内容 |
+| --- | --- |
+| `IDEA_VAULT_STORAGE` | `supabase`（Blueprintが設定） |
+| `SUPABASE_URL` | 自分のプロジェクトのHTTPS URL（末尾のスラッシュなし） |
+| `SUPABASE_PUBLISHABLE_KEY` | publishable / anonキー |
+| `IDEA_VAULT_OWNER_ID` | 本人ユーザーのUUID |
+
+環境変数はRenderの管理画面で設定し、ソースコードやチャットにパスワード・秘密キーを貼らないでください。接続情報が不足している場合、公開サーバーは起動を拒否します。**Renderの一時ディスクへ代替保存しません。**
+
+作成完了後、Renderのサービス画面にHTTPS URLが表示されます。その画面で本人ユーザーのメールとパスワードを入力してログインします。従来の `jima` / `IDEA_VAULT_PASSWORD` 方式は無料公開では使用しません。
+
+### 保護と保存範囲
+
+- ログイン画面とアプリコードは公開ですが、記録一覧・添付・書き込みには認証が必要です。画面に個人データを埋め込みません。
+- サーバーはSupabaseでJWTを検証し、`IDEA_VAULT_OWNER_ID` の本人だけを許可します。さらにテーブルとStorageにRLSを適用します。別ユーザーや匿名利用者が本人のデータを取得・変更できない構成です。
+- 添付は非公開Storageから本人JWTで取得します。トークンをURLへ入れず、公開URLを発行しません。ブラウザでは認証済みのデータを一時的なBlob URLで表示します。HTMLは実行せずダウンロードします。
+- パスワード／セッショントークンをlocalStorageやsessionStorageへ保存しません。再読み込み時は再ログインします。ログアウト時には表示とBlob URLを消し、Supabaseにもログアウトを要求します。Supabaseの既発行アクセストークンは期限まで有効な場合があるため、アカウント側のセッション有効期限も適切に設定してください。
+- メモとmetadataはDBへ、画像などはStorageへ保存します。Renderの再起動・再デプロイでもRender側の一時ディスク消去に影響されません。クラウドでは `idea.md` はバックアップ時に生成します。
+- クラウド版は **1ファイル50MBまで**。クラウド版の1回の投入合計上限も50MBです（ローカル版は140MB）。無料枠のStorage総容量・DB容量・転送量はSupabaseの管理画面で確認してください。
+- 通信が途切れた場合、保存完了が不確かなデータを消さないため、非公開Storageに未参照ファイルが残る場合があります。分離・統合でも元の非公開コピーを復旧用に残します。容量に余裕がなくなった場合はバックアップ後、Storage管理画面で参照されていないファイルだけを整理してください。
+- 同じ記録を別端末で同時に編集すると最後の保存が優先されます。共同編集・履歴管理は未実装です。
+- SupabaseのFreeプロジェクトはバックアップや休止に制限があります。定期的に手元へバックアップしてください。Supabase／Renderのアカウント自体のMFAも有効にしてください。
+
+この構成は通信のHTTPS保護・ログイン・RLSによるアクセス制限です。エンドツーエンド暗号化ではなく、ホスティングサービスやアカウント管理者は管理アクセスを持ちます。
+
+### クラウドから手元へバックアップ
+
+自分のPCで `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `IDEA_VAULT_OWNER_ID` を環境変数に設定して実行します。ログインパスワードは非表示の入力欄で入力します。コマンドライン引数・Git・チャットにパスワードを書かないでください。
+
+```sh
+python3 backup_cloud.py --destination /path/to/private-backups
+```
+
+成功したバックアップには `BACKUP_COMPLETE.json` が作られます。バックアップ先の親ディレクトリには新しい `cloud-...` フォルダが作成され、元ファイル・JSON・Markdownを保存します。途中で失敗したものは完了マーカーがないため、完全なバックアップとして扱わないでください。取得中の別端末からの変更は控えてください。復元には `python3 server.py --data-dir /path/to/private-backups/cloud-...` を使い、ローカル版で開けます。クラウドへの一括復元は未実装です。
+
+バックアップデータをGitHubへ保存する場合は、別の **Private Repository** に保存してください。既定の `backups/` はアプリコードのGitから除外しています。
+
+### 無料クラウド構成のテスト
+
+```sh
+python3 -m unittest discover -s tests -v
+# 模擬Supabaseでブラウザ操作も検証する場合（Playwrightは任意）
+python3 tests/test_cloud.py
+# 別ターミナル
+CHROMIUM_PATH=/usr/bin/chromium node tests/cloud-browser.cjs
+```
+
+模擬接続先のテストは実Supabaseの設定・RLS・利用枠・稼働を検証するものではありません。実プロジェクトを接続したあと、未ログイン／本人以外での拒否、ファイル保存とダウンロード、別端末からの取得を確認してください。クラウド開発環境で実Supabaseへ接続する場合は、そのプロジェクトの `PROJECT_ID.supabase.co` をネットワーク許可先へ追加する必要があります。
 
 ## 今後の拡張
 

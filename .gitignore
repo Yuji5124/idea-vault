@@ -3,3 +3,6 @@ __pycache__/
 .venv/
 vault/
 .DS_Store
+backups/
+.env
+.env.*
