@@ -274,3 +274,9 @@ CHROMIUM_PATH=/usr/bin/chromium node tests/document-browser.cjs
 ```
 
 Renderへの最新版の反映は手動デプロイが必要です。実Supabaseへの今回の資料取り込みとRenderからのGitHub取得は未検証で、開発環境でのGitHub取得成功だけでは実サービスの接続を保証しません。
+
+### 日本語ファイル名とSupabase Storage
+
+Supabase Storageのオブジェクトキーには日本語などのUnicode名を使用できないため、新しい添付は `本人UUID/記録ID/files/ファイルID.md` のような英数字のキーで保存します。画像も同様に `images/ファイルID.png` を使います。日本語の元名・表示名・バックアップ用の相対パスはmetadataに保持し、画面表示・ダウンロード名は変更しません。metadataの `storage_path` がクラウド用の保存キーです。既存の `storage_path` がない記録は以前のパスで読み込むため、既存データの移動や削除は行いません。
+
+「クラウド保存先が操作を拒否しました（HTTP 400）」が表示された場合、旧バージョンの日本語ファイル名によるStorage拒否の可能性があります。最新版をRenderで手動デプロイして再度取り込んでください。最新版でも失敗する場合は、Storage（添付ファイル）、記録DB、認証のどの段階で拒否されたかを表示するので、そのエラー文で切り分けます。RLSを無効にしたり、バケットを公開にしたりする必要はありません。

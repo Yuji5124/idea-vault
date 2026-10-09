@@ -2,6 +2,7 @@
 import base64
 import json
 import mimetypes
+import re
 import threading
 import uuid
 from urllib.error import HTTPError, URLError
@@ -29,7 +30,8 @@ def request(url, public_key, token, path, method='GET', payload=None, raw=None, 
             return json.loads(body) if not binary and response.headers.get('Content-Type', '').startswith('application/json') and body else body
     except HTTPError as error:
         # Avoid returning provider bodies containing user fields or secrets.
-        raise CloudError(f'クラウド保存先が操作を拒否しました（HTTP {error.code}）。接続設定・権限・利用枠を確認してください。') from None
+        stage = 'Storageの添付ファイル操作' if path.startswith('/storage/') else '記録DBの操作' if path.startswith('/rest/') else '認証操作'
+        raise CloudError(f'クラウド保存先が{stage}を拒否しました（HTTP {error.code}）。接続設定・権限・利用枠を確認してください。') from None
     except URLError:
         raise CloudError('クラウド保存先へ接続できません。時間を置いて再試行してください。') from None
 
@@ -65,7 +67,7 @@ class CloudVault:
 
     def object_path(self, record, file):
         # IDs and paths originate from our generated metadata, not request paths.
-        return self.owner + '/' + record['id'] + '/' + file['path']
+        return self.owner + '/' + record['id'] + '/' + file.get('storage_path', file['path'])
 
     def read_file(self, record, file):
         return self.call('/storage/v1/object/authenticated/idea-vault/' + quote(self.object_path(record, file), safe='/'), binary=True)
@@ -115,7 +117,14 @@ class CloudVault:
                 used.add(candidate)
                 mime = mimetypes.guess_type(item['name'])[0] or 'application/octet-stream'
                 created = datetime.fromtimestamp(item['lastModified'] / 1000).astimezone().isoformat() if item.get('lastModified') else now
-                file = {'id': uuid.uuid4().hex, 'name': candidate, 'original_name': item['name'],
+                file_id = uuid.uuid4().hex
+                extension = Path(item['name']).suffix.lower()
+                if not re.fullmatch(r'\.[a-z0-9]{1,16}', extension):
+                    extension = ''
+                area = 'images/' if mime.startswith('image/') else 'files/'
+                # Supabase Storage rejects Unicode object keys. Keep the original
+                # names/local backup paths in metadata, use ASCII IDs remotely.
+                file = {'id': file_id, 'storage_path': area + file_id + extension, 'name': candidate, 'original_name': item['name'],
                         'original_path': item.get('relativePath', item['name']), 'path': ('images/' if mime.startswith('image/') else 'files/') + candidate,
                         'mime': mime, 'size': len(raw), 'created_at': created,
                         'text': raw[:200000].decode('utf-8', errors='replace') if Path(item['name']).suffix.lower() in {'.txt', '.md', '.markdown', '.html', '.htm', '.csv', '.json'} else ''}

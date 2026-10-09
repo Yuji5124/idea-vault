@@ -132,6 +132,56 @@ class DocumentLocalTests(unittest.TestCase):
             self.assertEqual((Path(root)/saved['folder']/'idea.md').read_text(), TEXT)
 
 
+class StorageKeyTests(unittest.TestCase):
+    def test_unicode_names_have_ascii_storage_keys_and_legacy_paths_still_work(self):
+        from cloud_store import CloudVault
+        from test_cloud import OWNER
+        from test_vault import file
+        stored = {}
+        class MemoryVault(CloudVault):
+            def upload(self, record, attachment, raw):
+                key = self.object_path(record, attachment)
+                self.assert_ascii(key)
+                stored[key] = raw
+            def assert_ascii(self, key):
+                import re
+                if not re.fullmatch(r"[A-Za-z0-9_/!.*'() &$=@;:+,?-]*", key):
+                    raise AssertionError('Storage key is incompatible with Supabase')
+            def save(self, record, new=False):
+                pass
+        vault = MemoryVault('https://example.supabase.co', 'test-publishable', 'owner-token', OWNER)
+        record = vault.create('日本語タイトル', [file('ふしぎのほし研究所.md', b'markdown'), file('宇宙の画像.png', b'image')])
+        for attachment in record['files']:
+            self.assertTrue(attachment['storage_path'].isascii())
+            self.assertIn(attachment['original_name'], attachment['name'])
+            self.assertEqual(stored[vault.object_path(record, attachment)], b'image' if attachment['mime'].startswith('image/') else b'markdown')
+        legacy = {'path': 'files/2026-10-10_old.md', 'id': 'old'}
+        self.assertEqual(vault.object_path(record, legacy), OWNER+'/'+record['id']+'/'+legacy['path'])
+
+    def test_real_http_contract_uploads_japanese_markdown(self):
+        provider, app, threads = start_fixture()
+        try:
+            from test_vault import file
+            item = file('2026-10-10_ふしぎのほし研究所.md', '# ふしぎのほし研究所\n保存日：2026-10-10\n'.encode())
+            payload = {'groups': [{'title': '資料', 'files': [item]}]}
+            headers = {'Content-Type': 'application/json', 'Authorization': 'Bearer owner-token'}
+            base = f'http://127.0.0.1:{app.server_port}'
+            with urlopen(Request(base+'/api/import', data=json.dumps(payload).encode(), headers=headers)) as response:
+                result = json.load(response)
+            self.assertEqual(result['errors'], [])
+            record = result['records'][0]
+            self.assertEqual(record['title'], 'ふしぎのほし研究所')
+            self.assertTrue(all(key.isascii() for key in provider.objects))
+            with urlopen(Request(base+f"/api/file/{record['id']}/{record['files'][0]['id']}", headers=headers)) as response:
+                self.assertEqual(response.read(), base64.b64decode(item['data']))
+        finally:
+            for server in (app, provider):
+                server.shutdown()
+                server.server_close()
+            for thread in threads:
+                thread.join()
+
+
 if __name__ == '__main__':
     import threading
     provider, app, threads = start_fixture(8771)

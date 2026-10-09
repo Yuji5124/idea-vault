@@ -6,6 +6,7 @@ the real hosted project's policies or readiness.
 import base64
 import copy
 import json
+import re
 import threading
 import unittest
 from unittest.mock import patch
@@ -80,6 +81,9 @@ class SupabaseDouble(BaseHTTPRequestHandler):
                 self.reply(200, [data])
         elif path.startswith('/storage/v1/object/idea-vault/') and self.command == 'POST':
             name = unquote(path.split('/idea-vault/', 1)[1])
+            if not re.fullmatch(r"[A-Za-z0-9_/!.*'() &$=@;:+,?-]*", name):
+                self.reply(400, {'error': 'InvalidKey'})
+                return
             if name in self.server.objects:
                 self.reply(409, {})
                 return
