@@ -183,3 +183,52 @@ CHROMIUM_PATH=/usr/bin/chromium node tests/cloud-browser.cjs
 ## 今後の拡張
 
 基本機能はAIなしで動きます。次の段階で、任意のAI分類、画像／PDFのOCR、全文索引、JIMA FILTER履歴・選択傾向の分析、PRINCIPLE LOOP / PIXVAULT / SOUNDVAULT / NEXUSとのJSON連携を追加できます。現時点ではファイル名によるタイトル候補とMIME判定のみを行い、AI解析やGitHub同期は実装していません。
+
+## パスワード再設定（Render / Supabase）
+
+本人用の再設定メールから新しいパスワード（12文字以上）を登録できます。確認入力が一致し、Supabaseで認証と本人UUIDの照合が成功した場合だけ更新します。再設定画面は保管庫を取得・表示せず、完了後は「ログイン画面へ戻る」から通常のログインをしてください。リンクの再読み込みや画面を離れる操作では認証情報を復元しません。失敗した場合は新しいメールを発行してください。
+
+### メールとURL設定を確認する
+
+今回、利用者から **Site URL = `https://idea-vault-cmgl.onrender.com`** と報告されています。現在のメールテンプレートと Redirect URLs は管理画面にアクセスできず、未確認です。設定済みとは扱っていません。
+
+Supabase Authentication → Emails → Templates → Reset Password のリンク部分と、Authentication → URL Configuration を確認してください。アプリから再設定メールを発行する機能は今回追加していません。これまで利用している発行方法で、新しい本人用メールを送ってください。
+
+対応するリンクは次の2種類です。
+
+1. **標準の implicit フロー**：テンプレートの `href="{{ .ConfirmationURL }}"` を使用。Supabaseがワンタイムリンクを検証し、Site URL（または許可された redirect URL）へ `#access_token=…&refresh_token=…&type=recovery` を付けて戻します。アプリはフラグメントを直ちに消去し、必要なaccess tokenだけをメモリで保持します。Supabaseの `GET /auth/v1/user` でセッションの有効性・本人UUIDを検証し、`PUT /auth/v1/user` でパスワードを更新します。`type=recovery` という文字列だけを認証根拠にはしません。Supabaseの公式の認証済みパスワード更新と同じく、有効な本人セッションが権限の根拠です。セッション発行前のメールリンクの期限・一回性はSupabase、発行後のJWTの有効性は `/user` が検証します。
+2. **token_hash フロー**：クエリではなくフラグメントにTokenHashを置くカスタムテンプレートを使用。以下のリンク部分をReset Passwordテンプレートに設定します（実トークンを手入力しません）。
+
+   ```html
+   <a href="{{ .SiteURL }}/#token_hash={{ .TokenHash }}&amp;type=recovery">パスワードを再設定</a>
+   ```
+
+   フラグメントを直ちに消去し、フォームの明示的な送信時だけ、サーバーから `POST /auth/v1/verify` に `token_hash` と固定の `type=recovery` を送ります。Supabaseが期限・一回性を検証したセッションで本人UUIDを照合し、パスワードを更新します。ページ表示やメールスキャナーのGETだけではリンクを消費しません。使用済み・期限切れのエラーは送信時に表示します。
+
+Site URLの末尾はスラッシュなしの上記URLにしてください。メール発行側が `redirectTo` を指定する場合は、アプリのルートURL `https://idea-vault-cmgl.onrender.com/` を指定し、Redirect URLsに同じURLを許可してください。広いワイルドカードや未知のリダイレクト先は追加しないでください。標準リンクで `redirectTo` が未指定ならSite URLを使用します。
+
+**PKCEの `?code=…`、`?token_hash=…` などのクエリ型リンクは非対応**です。PKCEのverifierを持つ対応クライアントがこのアプリにはなく、トークンをURLクエリへ置かない要件もあるため拒否し、クエリを消去してエラーを表示します。既存メールがこの方式なら上記のtoken_hashフラグメント用テンプレートに変更し、新しいメールを発行してください。クエリはブラウザ到着前にHTTP要求へ含まれるため、アプリで消去してもホスティング側のアクセスログを遡って消せません。実リンク・パスワード・トークンをチャットやログに貼らないでください。
+
+### 保護と制限
+
+- publishable / anonキーだけを使用し、既存の本人UUID照合、DBのRLS、private Storage、通常ログインを維持しています。Render Free設定とSupabase保存方式は変更していません。
+- recoveryのトークン・パスワードはPOST本文と一時メモリだけで処理します。localStorage、sessionStorage、Cookie、URLクエリ、ログ、Render一時ディスクに保存せず、セッションをブラウザへ新規発行しません。更新結果に個人プロフィールや認証トークンを返しません。
+- 再設定情報は通常の保管庫セッションに代入しません。フラグメントから来たrefresh tokenは保持しません。再設定完了後は通常のログインが必要です。
+- 成功後はSupabaseにグローバルログアウトを要求します。失敗時は、パスワードは変更済みだが既存セッション終了に失敗した旨を画面に表示します。発行済みaccess JWTは期限まで有効な場合があり、即時無効化を保証しません。
+- Supabase側の追加パスワード要件、MFAや再認証ポリシーによる拒否時は更新せず、エラーを表示します。実プロジェクトのポリシーとの整合性は未検証です。
+- ログアウト時に一覧・詳細フォーム・添付Blob URLを消去し、ログアウト前の遅延応答でデータを再表示しないようにしています。
+
+公式フローの確認元：[Password-based Auth](https://supabase.com/docs/guides/auth/passwords)、[Email Templates](https://supabase.com/docs/guides/auth/auth-email-templates)、[verifyOtp](https://supabase.com/docs/reference/javascript/auth-verifyotp)、[updateUser](https://supabase.com/docs/reference/javascript/auth-updateuser)。ドキュメントサイトへのアクセスは403だったため、Supabase公式GitHubの同ドキュメントと `auth-js` の実装（`POST /verify`、`GET/PUT /user`）も確認しています。
+
+### 再設定の開発用検証
+
+```sh
+python3 -m unittest discover -s tests -v
+# ターミナル1：実データを使わないメモリ内の模擬Supabase
+python3 tests/test_cloud.py
+# ターミナル2：Playwright / Chromiumが必要。順番に実行する
+CHROMIUM_PATH=/usr/bin/chromium node tests/cloud-browser.cjs
+CHROMIUM_PATH=/usr/bin/chromium node tests/recovery-browser.cjs
+```
+
+模擬サーバーはテストでパスワードやワンタイムハッシュを変更するため、再実行時は停止して起動し直してください。実Supabaseによるメール配信・リダイレクト・パスワード変更・ログインと、Render上での最新版の動作は未検証です。`render.yaml` の自動デプロイはOFFのままなので、push後の反映にはRenderから手動デプロイが必要です。

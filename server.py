@@ -289,7 +289,7 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == '/api/config':
             self.send(200, {'storage': 'cloud' if self.cloud_config() else 'local'})
             return
-        public_files = {'/': 'index.html', '/app.js': 'app.js', '/style.css': 'style.css'}
+        public_files = {'/': 'index.html', '/app.js': 'app.js', '/style.css': 'style.css', '/recovery.js': 'recovery.js'}
         if self.cloud_config() and parsed.path in public_files:
             name = public_files[parsed.path]
             self.send(200, (WEB / name).read_bytes(), mimetypes.guess_type(name)[0] + '; charset=utf-8')
@@ -323,7 +323,7 @@ class Handler(BaseHTTPRequestHandler):
                 download = 'download' in parse_qs(parsed.query, keep_blank_values=True) or mime == 'application/octet-stream'
                 self.send(200, contents, mime, file['name'] if download else None)
             else:
-                name = {'/': 'index.html', '/app.js': 'app.js', '/style.css': 'style.css'}.get(parsed.path)
+                name = {'/': 'index.html', '/app.js': 'app.js', '/style.css': 'style.css', '/recovery.js': 'recovery.js'}.get(parsed.path)
                 if not name:
                     self.send(404, {'error': '見つかりません'})
                     return
@@ -344,7 +344,7 @@ class Handler(BaseHTTPRequestHandler):
         if host not in allowed or (origin and origin not in origins):
             self.send(403, {'error': 'ローカルの同一オリジンからアクセスしてください'})
             return
-        auth_operation = bool(self.cloud_config() and self.path in {'/api/login', '/api/refresh'})
+        auth_operation = bool(self.cloud_config() and self.path in {'/api/login', '/api/refresh', '/api/recovery-check', '/api/reset-password'})
         if not auth_operation and not self.authenticated():
             return
         if not self.headers.get('Content-Type', '').startswith('application/json'):
@@ -363,6 +363,49 @@ class Handler(BaseHTTPRequestHandler):
             if auth_operation:
                 from cloud_store import request, CloudVault, CloudError
                 config = self.cloud_config()
+                if self.path in {'/api/recovery-check', '/api/reset-password'}:
+                    # No admin credentials, local persistence, or recovery session
+                    # promoted into a normal vault login. Supabase is authoritative.
+                    token = None
+                    try:
+                        if not isinstance(payload, dict):
+                            raise CloudError('Invalid request')
+                        password = payload.get('password')
+                        if self.path == '/api/reset-password' and (not isinstance(password, str) or not 12 <= len(password) <= 1024):
+                            self.send(400, {'error': 'パスワードは12文字以上1024文字以内で入力してください。'})
+                            return
+                        if payload.get('type') != 'recovery':
+                            raise CloudError('Invalid recovery type')
+                        if 'token_hash' in payload:
+                            # Verify only on explicit submission: mail scanners and
+                            # page loads must not consume a one-time recovery link.
+                            hashed = payload['token_hash']
+                            if self.path != '/api/reset-password' or not isinstance(hashed, str) or not re.fullmatch(r'[A-Za-z0-9_-]{20,512}', hashed) or 'access_token' in payload:
+                                raise CloudError('Invalid recovery hash')
+                            recovered = request(config[0], config[1], None, '/auth/v1/verify', 'POST', {'token_hash': hashed, 'type': 'recovery'})
+                            token = recovered['access_token']
+                        else:
+                            token = payload.get('access_token')
+                            if not isinstance(token, str) or not token or len(token) > 12000:
+                                raise CloudError('Invalid session')
+                        vault = CloudVault(config[0], config[1], token, config[2])
+                        vault.verify()  # GET /user validates signature/expiry AND owner UUID.
+                        if self.path == '/api/recovery-check':
+                            self.send(200, {'valid': True})
+                            return
+                        request(config[0], config[1], token, '/auth/v1/user', 'PUT', {'password': password})
+                    except (CloudError, KeyError, TypeError):
+                        self.send(400, {'error': '再設定リンクが無効・期限切れ、またはこの保管庫の本人用ではありません。パスワード要件・接続設定を確認し、新しいメールを発行してください。'})
+                        return
+                    # Best-effort global refresh-session revocation. Supabase access
+                    # JWTs may still live until expiry; never claim immediate revocation.
+                    try:
+                        request(config[0], config[1], token, '/auth/v1/logout?scope=global', 'POST', {})
+                        revoked = True
+                    except CloudError:
+                        revoked = False
+                    self.send(200, {'updated': True, 'sessions_revoked': revoked})
+                    return
                 grant = 'password' if self.path == '/api/login' else 'refresh_token'
                 fields = {'email': payload.get('email', ''), 'password': payload.get('password', '')} if grant == 'password' else {'refresh_token': payload.get('refresh_token', '')}
                 try:

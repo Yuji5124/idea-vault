@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="ja">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>IDEA VAULT — 発想の保管庫</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>IDEA VAULT — 発想の保管庫</title><script src="/recovery.js"></script><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
 <body>
 <aside class="sidebar">
   <a class="brand" href="/" aria-label="IDEA VAULT ホーム"><span class="brandmark">◈</span><span>IDEA<br>VAULT<span class="brandcaption">YOUR CREATIVE ARCHIVE</span></span></a>
@@ -38,6 +38,7 @@
 </main>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 <dialog id="loginDialog"><form id="loginForm"><span class="eyebrow">YOUR PRIVATE IDEA VAULT</span><h2>保管庫にログイン</h2><p class="hint">登録済みの本人アカウントでログインしてください。保存データは非公開です。</p><label>メールアドレス<input name="email" type="email" required autocomplete="username"></label><label>パスワード<input name="password" type="password" required autocomplete="current-password"></label><p id="loginError" class="hint" role="alert"></p><div class="dialog-actions"><button class="primary" type="submit">ログイン</button></div></form></dialog>
+<dialog id="recoveryDialog"><form id="recoveryForm"><span class="eyebrow">YOUR PRIVATE IDEA VAULT</span><h2>パスワードを再設定</h2><p class="hint">再設定では保管庫を開きません。新しいパスワードを登録後、通常のログインを行ってください。</p><label>新しいパスワード<input name="password" type="password" required minlength="12" maxlength="1024" autocomplete="new-password"></label><label>新しいパスワード（確認）<input name="confirm" type="password" required minlength="12" maxlength="1024" autocomplete="new-password"></label><p id="recoveryStatus" class="hint" role="status" aria-live="polite"></p><div class="dialog-actions"><button id="recoveryBack" class="secondary" type="button">ログイン画面へ戻る</button><button class="primary" type="submit">新しいパスワードを登録</button></div></form></dialog>
 <dialog id="detail"><form id="editForm">
   <div class="dialog-header"><span class="eyebrow">YOUR IDEA, IN DETAIL</span><button type="button" class="iconbutton" id="closeDetail" aria-label="閉じる">×</button></div>
   <div id="detailPreview" class="detail-preview"></div>

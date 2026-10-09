@@ -33,14 +33,27 @@ class SupabaseDouble(BaseHTTPRequestHandler):
         data = json.loads(raw) if self.headers.get('Content-Type', '').startswith('application/json') and raw else None
         token = self.headers.get('Authorization')
         if path == '/auth/v1/token':
-            accepted = data.get('refresh_token') == 'owner-refresh' or (data.get('email') == 'owner@example.test' and data.get('password') == 'test-password')
+            accepted = data.get('refresh_token') == 'owner-refresh' or (data.get('email') == 'owner@example.test' and data.get('password') == getattr(self.server, 'password', 'test-password'))
             if not accepted:
                 self.reply(401, {})
                 return
             self.reply(200, {'access_token': 'owner-token', 'refresh_token': 'owner-refresh', 'expires_in': 3600})
             return
+        if path == '/auth/v1/verify':
+            hashed = data.get('token_hash')
+            if data.get('type') != 'recovery' or hashed not in {'owner-recovery-hash-123456789', 'other-recovery-hash-123456789'} or hashed in self.server.used_hashes:
+                self.reply(403, {'error': 'test provider rejects invalid/expired/used token'})
+                return
+            self.server.used_hashes.add(hashed)
+            self.reply(200, {'access_token': 'owner-token' if hashed.startswith('owner-') else 'other-token'})
+            return
         if token not in {'Bearer owner-token', 'Bearer other-token'}:
             self.reply(401, {})
+            return
+        if path == '/auth/v1/user' and self.command == 'PUT':
+            self.server.password_updates.append((token, data))
+            self.server.password = data['password']
+            self.reply(200, {'id': OWNER})
             return
         if path == '/auth/v1/user':
             self.reply(200, {'id': OWNER if token == 'Bearer owner-token' else '22222222-2222-4222-8222-222222222222'})
@@ -86,12 +99,13 @@ class SupabaseDouble(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
-    do_GET = do_POST = do_PATCH = do_DELETE = handle_request
+    do_GET = do_POST = do_PATCH = do_DELETE = do_PUT = handle_request
 
 
 def start_fixture(port=0):
     provider = ThreadingHTTPServer(('127.0.0.1', 0), SupabaseDouble)
     provider.rows, provider.objects = {}, {}
+    provider.password_updates, provider.used_hashes = [], set()
     app = ThreadingHTTPServer(('127.0.0.1', port), Handler)
     app.cloud_config = (f'http://127.0.0.1:{provider.server_port}', 'test-publishable', OWNER)
     app.cloud_lock = threading.RLock()
