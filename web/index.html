@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ja">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>IDEA VAULT — 発想の保管庫</title><script src="/recovery.js"></script><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body>
+<aside class="sidebar">
+  <a class="brand" href="/" aria-label="IDEA VAULT ホーム"><span class="brandmark">◈</span><span>IDEA<br>VAULT<span class="brandcaption">YOUR CREATIVE ARCHIVE</span></span></a>
+  <div class="navcaption">LIBRARY</div>
+  <nav id="navigation">
+    <button class="nav active" data-view="ALL"><span>▦</span>すべての記録 <b id="countAll">0</b></button>
+    <button class="nav" data-view="INBOX"><span>↓</span>INBOX <b id="countInbox">0</b></button>
+    <button class="nav" data-view="TIMELINE"><span>◷</span>タイムライン</button>
+    <div class="navcaption layers">LAYERS</div>
+    <button class="nav" data-view="SOURCE"><span class="layerdot source"></span>SOURCE</button>
+    <button class="nav" data-view="PRINCIPLE"><span class="layerdot principle"></span>PRINCIPLE</button>
+    <button class="nav" data-view="IDEA"><span class="layerdot idea"></span>IDEA</button>
+    <button class="nav" data-view="VISUAL"><span class="layerdot visual"></span>VISUAL</button>
+  </nav>
+  <div class="sidebar-bottom"><span class="statusdot"></span> LOCAL STORAGE<span>あなたの発想を、あなたの手元に。</span></div>
+</aside>
+<main>
+  <header><div><span class="eyebrow">A PLACE FOR YOUR NEXT IDEA</span><h1 id="pageTitle">すべての記録<span class="heading-dot">.</span></h1></div><div class="header-actions"><button class="secondary" id="logout" hidden>ログアウト</button><button class="secondary" id="githubImport">GitHub資料を取り込む</button><button class="primary" id="newNote">＋ メモを追加</button></div></header>
+  <p class="intro">ひらめきも、まだ名前のない思いつきも。<br class="mobile-break">まずはここに、置いておこう。</p>
+  <section class="dropzone" id="dropzone" aria-label="ファイルをドラッグ＆ドロップ">
+    <div class="drop-icon">↓</div><h2>ここにファイルをドロップ</h2><p>画像、メモ、資料。分類は、あとからで大丈夫。</p>
+    <div class="upload-buttons"><button class="primary" id="chooseFiles">＋ ファイルを選択</button><button class="secondary" id="chooseFolder">▱ フォルダを選択</button></div>
+    <span class="filetypes">PNG / JPG / PDF / MD / TXT / HTML / MOV / MP4 …</span>
+    <input type="file" id="fileInput" multiple hidden><input type="file" id="folderInput" webkitdirectory multiple hidden>
+  </section>
+  <div class="capture-note"><span>↳</span> ドロップするだけでINBOXへ。保存日を自動で付けて、大切に保管します。</div>
+  <p id="cloudNotice" class="hint" hidden>本人専用のクラウド保存 · 1ファイル50MBまで · 無料枠の容量にご注意ください</p>
+  <section class="library">
+    <div class="library-heading"><h2 id="sectionTitle">RECENT <span>最近のひらめき</span></h2><span id="resultCount">0 records</span></div>
+    <div class="filters"><label class="searchbox"><span>⌕</span><input id="search" type="search" placeholder="タイトル、タグ、原理から探す…" aria-label="キーワード検索"><kbd>/</kbd></label><select id="rating" aria-label="JIMA FILTERで絞り込む"><option value="">JIMA FILTER · すべて</option><option>GOOD</option><option>HOLD</option><option>BAD</option><option>未評価</option></select></div>
+    <div class="organize-filters"><label>資料の日付から<input id="dateFrom" type="date"></label><label>資料の日付まで<input id="dateTo" type="date"></label><label>並び順<select id="sortOrder"><option value="newest">日付が新しい順</option><option value="oldest">日付が古い順</option><option value="title">タイトル順</option></select></label><button class="secondary" id="clearOrganization">日付をリセット</button></div>
+    <div id="records"></div>
+    <div class="empty" id="empty"><span>✳</span><h3>最初のひらめきを、ここに。</h3><p>ファイルをドロップするか、短いメモから始めましょう。</p></div>
+  </section>
+  <footer><span>IDEA VAULT</span><span>SOURCE → PRINCIPLE → IDEA → VISUAL</span><span>KEEP THE SPARK ALIVE.</span></footer>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<dialog id="loginDialog"><form id="loginForm"><span class="eyebrow">YOUR PRIVATE IDEA VAULT</span><h2>保管庫にログイン</h2><p class="hint">登録済みの本人アカウントでログインしてください。保存データは非公開です。</p><label>メールアドレス<input name="email" type="email" required autocomplete="username"></label><label>パスワード<input name="password" type="password" required autocomplete="current-password"></label><p id="loginError" class="hint" role="alert"></p><div class="dialog-actions"><button class="primary" type="submit">ログイン</button></div></form></dialog>
+<dialog id="recoveryDialog"><form id="recoveryForm"><span class="eyebrow">YOUR PRIVATE IDEA VAULT</span><h2>パスワードを再設定</h2><p class="hint">再設定では保管庫を開きません。新しいパスワードを登録後、通常のログインを行ってください。</p><label>新しいパスワード<input name="password" type="password" required minlength="12" maxlength="1024" autocomplete="new-password"></label><label>新しいパスワード（確認）<input name="confirm" type="password" required minlength="12" maxlength="1024" autocomplete="new-password"></label><p id="recoveryStatus" class="hint" role="status" aria-live="polite"></p><div class="dialog-actions"><button id="recoveryBack" class="secondary" type="button">ログイン画面へ戻る</button><button class="primary" type="submit">新しいパスワードを登録</button></div></form></dialog>
+<dialog id="githubDialog"><form id="githubForm"><div class="dialog-header"><span class="eyebrow">IMPORT YOUR SAVED IDEA</span><button id="closeGithub" class="iconbutton" type="button" aria-label="閉じる">×</button></div><h2>ChatGPTがGitHubへ保存した資料</h2><p class="hint">GitHubでMarkdown資料を開き、そのページのリンクを貼り付けてください。日付・タイトル・本文と元ファイルを取り込みます。画像の説明だけがある場合、画像ファイルは追加されません。</p><label>GitHub資料のリンク<input name="url" type="url" required maxlength="2048" placeholder="https://github.com/Yuji5124/idea-vault/blob/main/ideas/…md"></label><p class="hint">mainのideas内にある2MB以内の公開Markdown資料に対応。同じリンクは重複保存せず、既存の編集も上書きしません。非公開資料はダウンロードしてドロップしてください。</p><p id="githubStatus" class="hint" role="status" aria-live="polite"></p><div class="dialog-actions"><button class="primary" type="submit">保管庫に取り込む</button></div></form></dialog>
+<dialog id="detail"><form id="editForm">
+  <div class="dialog-header"><span class="eyebrow">YOUR IDEA, IN DETAIL</span><button type="button" class="iconbutton" id="closeDetail" aria-label="閉じる">×</button></div>
+  <div id="detailPreview" class="detail-preview"></div>
+  <label>タイトル<input name="title" required maxlength="200"></label><label>資料の日付<input name="record_date" type="date" required></label>
+  <div class="form-row"><label>分類<select name="type"><option>SOURCE</option><option>PRINCIPLE</option><option>IDEA</option><option>VISUAL</option></select></label><label>カテゴリー<input name="category" placeholder="ゲーム、自然、UI…"></label></div>
+  <label>TAG <small>カンマ区切り</small><input name="tags" placeholder="蜘蛛, 痕跡, 探索"></label>
+  <label>メモ / PRINCIPLE<textarea name="body" rows="4" placeholder="見つけた構造、思いついたことを自由に。"></textarea></label>
+  <label>SOURCE / PRINCIPLE / IDEA / VISUAL の関連</label><div id="relations" class="relations"></div>
+  <div class="jima"><label>JIMA FILTER<select name="jima_filter"><option>未評価</option><option>GOOD</option><option>HOLD</option><option>BAD</option></select></label><label>ひとことコメント<textarea name="comment" rows="2" placeholder="ルールが一文で説明できる。"></textarea></label></div>
+  <label class="checkbox"><input name="inbox" type="checkbox">INBOXに置く（外すと分類先へ整理）</label>
+  <div id="dates" class="dates"></div><details><summary>ファイルの分離・統合</summary><p class="hint">選んだファイルを別の記録へ移します。元のメモと評価は残ります。</p><div id="transferFiles"></div><label>移動先<select id="transferTarget"></select></label><div class="transfer-actions"><button type="button" class="secondary" id="moveFiles">選択ファイルを移動</button><button type="button" class="secondary" id="splitFiles">新しいIDEAへ分離</button></div><p class="hint">すべて選択して移動するとファイルを統合できます。</p></details>
+  <div class="dialog-actions"><span id="saveStatus" role="status"></span><button class="primary" type="submit">変更を保存</button></div>
+</form></dialog>
+<dialog id="noteDialog"><form id="noteForm"><div class="dialog-header"><span class="eyebrow">CAPTURE A THOUGHT</span><button type="button" class="iconbutton" id="closeNote" aria-label="閉じる">×</button></div><h2>ひらめきを残す</h2><label>タイトル<input name="title" required maxlength="200" placeholder="名前は、あとから変えられます。"></label><label>資料の日付<input name="record_date" type="date"></label><label>分類<select name="type"><option>IDEA</option><option>SOURCE</option><option>PRINCIPLE</option><option>VISUAL</option></select></label><label>メモ<textarea name="body" rows="6" placeholder="一行だけでも大丈夫。"></textarea></label><div class="dialog-actions"><button class="primary" type="submit">INBOXに保存</button></div></form></dialog>
+</body></html>

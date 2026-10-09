@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: idea-vault
+    runtime: python
+    plan: free
+    buildCommand: python3 -m unittest discover -s tests -v
+    startCommand: python3 server.py
+    healthCheckPath: /healthz
+    autoDeployTrigger: "off"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.14
+      - key: IDEA_VAULT_STORAGE
+        value: supabase
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: IDEA_VAULT_OWNER_ID
+        sync: false
