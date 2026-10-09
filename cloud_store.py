@@ -85,15 +85,20 @@ class CloudVault:
             if not rows:
                 raise CloudError('記録を更新できませんでした。')
 
-    def create(self, title, files=(), kind='IDEA', inbox=True, body=''):
+    def create(self, title, files=(), kind='IDEA', inbox=True, body='', record_date=None, source_url=None):
         from server import stamp, dated, KINDS
         if kind not in KINDS or not isinstance(title, str) or not title.strip() or not isinstance(body, str):
             raise CloudError('タイトル・分類・本文を確認してください。')
+        from document_import import record_date as validate_date
+        document_date = validate_date(record_date) if record_date is not None else None
         now = stamp()
         record = {'schema_version': 1, 'id': uuid.uuid4().hex, 'title': title.strip(), 'type': kind, 'inbox': inbox,
                   'category': '', 'tags': [], 'body': body, 'relations': [], 'jima_filter': '未評価', 'comment': '',
                   'created_at': now, 'imported_at': now, 'updated_at': now, 'files': [],
-                  'folder': ('inbox' if inbox else {'SOURCE': 'sources', 'PRINCIPLE': 'principles'}.get(kind, 'ideas')) + '/' + dated(title, now[:10])}
+                  'folder': ('inbox' if inbox else {'SOURCE': 'sources', 'PRINCIPLE': 'principles'}.get(kind, 'ideas')) + '/' + dated(title, document_date or now[:10])}
+        record['record_date'] = document_date or now[:10]
+        if source_url is not None:
+            record['source_url'] = source_url
         used = set()
         try:
             from pathlib import Path
@@ -102,7 +107,7 @@ class CloudVault:
                 raw = base64.b64decode(item['data'], validate=True)
                 if len(raw) > 50 * 1024 * 1024:
                     raise CloudError('無料クラウド保存では1ファイル50MBまでです。')
-                name = dated(item['name'], now[:10])
+                name = dated(item['name'], document_date or now[:10])
                 candidate, number = name, 1
                 while candidate in used:
                     candidate = f'{Path(name).stem}_{number:02d}{Path(name).suffix}'
@@ -130,6 +135,9 @@ class CloudVault:
         record = self.get(identifier)
         if changes.get('type', record['type']) not in KINDS or changes.get('jima_filter', record['jima_filter']) not in RATINGS:
             raise CloudError('分類・評価を確認してください。')
+        if 'record_date' in changes:
+            from document_import import record_date as validate_date
+            changes = {**changes, 'record_date': validate_date(changes['record_date'])}
         for name in ('title', 'category', 'body', 'comment'):
             if name in changes and not isinstance(changes[name], str):
                 raise CloudError('テキスト形式が不正です。')
@@ -143,7 +151,7 @@ class CloudVault:
             ids = {r['id'] for r in self.records()} - {identifier}
             if not isinstance(changes['relations'], list) or not all(isinstance(r, str) and r in ids for r in changes['relations']):
                 raise CloudError('関連先を確認してください。')
-        for field in ('title', 'type', 'category', 'body', 'comment', 'tags', 'inbox', 'relations', 'jima_filter'):
+        for field in ('title', 'type', 'category', 'body', 'comment', 'tags', 'inbox', 'relations', 'jima_filter', 'record_date'):
             if field in changes:
                 record[field] = changes[field]
         record['updated_at'] = stamp()

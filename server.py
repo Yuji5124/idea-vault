@@ -93,13 +93,15 @@ class Vault:
         data = {k: v for k, v in record.items() if k != 'folder'}
         atomic_json(self.root / folder / 'metadata.json', data)
 
-    def create(self, title, files=(), kind='IDEA', inbox=True, body=''):
+    def create(self, title, files=(), kind='IDEA', inbox=True, body='', record_date=None, source_url=None):
         if kind not in KINDS:
             raise ValueError('分類が不正です')
         if not isinstance(title, str) or not title.strip():
             raise ValueError('タイトルを入力してください')
+        from document_import import record_date as validate_date
+        document_date = validate_date(record_date) if record_date is not None else None
         now = stamp()
-        day = now[:10]
+        day = document_date or now[:10]
         area = 'inbox' if inbox else {'SOURCE': 'sources', 'PRINCIPLE': 'principles'}.get(kind, 'ideas')
         with self.lock:
             destination = unique_path(self.root / area, dated(title, day))
@@ -109,6 +111,9 @@ class Vault:
                       'type': kind, 'inbox': inbox, 'category': '', 'tags': [],
                       'body': body, 'relations': [], 'jima_filter': '未評価', 'comment': '',
                       'created_at': now, 'imported_at': now, 'updated_at': now, 'files': []}
+            record['record_date'] = document_date or now[:10]
+            if source_url is not None:
+                record['source_url'] = source_url
             try:
                 for item in files:
                     raw = base64.b64decode(item['data'], validate=True)
@@ -149,6 +154,9 @@ class Vault:
                 raise ValueError('分類が不正です')
             if changes.get('jima_filter', record['jima_filter']) not in RATINGS:
                 raise ValueError('JIMA FILTER が不正です')
+            if 'record_date' in changes:
+                from document_import import record_date as validate_date
+                changes = {**changes, 'record_date': validate_date(changes['record_date'])}
             for key in ('title', 'category', 'body', 'comment'):
                 if key in changes and not isinstance(changes[key], str):
                     raise ValueError('テキスト形式が不正です')
@@ -162,7 +170,7 @@ class Vault:
                     raise ValueError('関連先が不正です')
             if 'inbox' in changes and not isinstance(changes['inbox'], bool):
                 raise ValueError('INBOX の指定が不正です')
-            for key in ('title', 'type', 'category', 'tags', 'body', 'relations', 'jima_filter', 'comment', 'inbox'):
+            for key in ('title', 'type', 'category', 'tags', 'body', 'relations', 'jima_filter', 'comment', 'inbox', 'record_date'):
                 if key in changes:
                     record[key] = changes[key]
             record['updated_at'] = stamp()
@@ -435,12 +443,27 @@ class Handler(BaseHTTPRequestHandler):
                         try:
                             if not group.get('files'):
                                 raise ValueError('空のフォルダは取り込めません')
-                            saved.append(vault.create(group['title'], group['files']))
+                            from document_import import markdown_group
+                            metadata = markdown_group(group)
+                            if metadata:
+                                saved.append(vault.create(files=group['files'], **metadata))
+                            else:
+                                saved.append(vault.create(group['title'], group['files']))
                         except (ValueError, KeyError, TypeError, OSError, binascii.Error) as error:
                             errors.append({'title': group.get('title', ''), 'error': str(error)})
                     self.send(200, {'records': saved, 'errors': errors})
+                elif self.path == '/api/import-github':
+                    from document_import import fetch_github, github_location
+                    source, _, _ = github_location(payload.get('url'))
+                    existing = next((record for record in vault.records() if record.get('source_url') == source), None)
+                    if existing:
+                        self.send(200, {'record': existing, 'already_imported': True})
+                    else:
+                        source, metadata, item = fetch_github(source)
+                        record = vault.create(files=[item], source_url=source, **metadata)
+                        self.send(201, {'record': record, 'already_imported': False})
                 elif self.path == '/api/create':
-                    self.send(201, vault.create(payload['title'], kind=payload.get('type', 'IDEA'), body=payload.get('body', '')))
+                    self.send(201, vault.create(payload['title'], kind=payload.get('type', 'IDEA'), body=payload.get('body', ''), record_date=payload.get('record_date')))
                 elif self.path == '/api/update':
                     self.send(200, vault.update(payload['id'], payload['changes']))
                 elif self.path == '/api/transfer':
