@@ -156,15 +156,58 @@ def sync_github_documents(vault, attempted=()):
     known = {record.get('source_url') for record in vault.records()}
     pending = [url for url in urls if url not in known and url not in attempted]
     imported = 0
+    image_count = 0
     errors = []
     for source in pending[:SYNC_BATCH_SIZE]:
         try:
-            source, metadata, item = fetch_github(source)
-            vault.create(files=[item], source_url=source, **metadata)
+            source, metadata, files = fetch_github_bundle(source)
+            vault.create(files=files, source_url=source, **metadata)
             imported += 1
+            image_count += len(files)-1
         except (ValueError, KeyError, TypeError, OSError):
             # No filenames, provider response bodies or user data in sync errors.
             errors.append('取り込めない資料がありました。資料の形式・保存先設定を確認し、リンク指定で再試行してください。')
-    return {'imported': imported, 'already_imported': sum(url in known for url in urls),
+    return {'imported': imported, 'images': image_count, 'already_imported': sum(url in known for url in urls),
             'failed': len(errors), 'errors': errors,
             'remaining': max(0, len(pending)-SYNC_BATCH_SIZE), 'attempted': pending[:SYNC_BATCH_SIZE]}
+
+MAX_IMAGE_BYTES = 2 * 1024 * 1024
+MAX_DOCUMENT_IMAGES = 4
+
+
+def fetch_github_bundle(url):
+    """Fetch explicit relative Markdown images, never external URLs or active SVG."""
+    source, metadata, document = fetch_github(url)
+    directory = unquote(urlsplit(source).path).rsplit('/', 1)[0]
+    images = {}
+    for matched in re.finditer(r'!\[[^\]\r\n]*\]\(([^)\r\n]+)\)', metadata['body']):
+        relative = unquote(matched[1].strip().removeprefix('<').removesuffix('>'))
+        parsed = urlsplit(relative)
+        if parsed.scheme or parsed.netloc or parsed.query or parsed.fragment or relative.startswith('/') or any(part in {'', '.', '..'} for part in relative.split('/')) or any(c in relative for c in ('\\', '\x00', '\r', '\n')):
+            raise ValueError('画像は資料と同じフォルダ以下の相対リンクで指定してください。外部URLは取得しません。')
+        extension = PurePosixPath(relative).suffix.lower()
+        if extension not in {'.png', '.jpg', '.jpeg', '.webp'}:
+            raise ValueError('資料の画像はPNG・JPEG・WebPを使用してください。')
+        raw_url = 'https://raw.githubusercontent.com/Yuji5124/idea-vault/main/' + quote(directory.split('/blob/main/', 1)[1] + '/' + relative, safe='/')
+        images[raw_url] = relative
+    if len(images) > MAX_DOCUMENT_IMAGES:
+        raise ValueError('1資料の画像は4枚以内にしてください。')
+    files = [document]
+    for raw_url, relative in images.items():
+        try:
+            with build_opener(NoRedirect()).open(Request(raw_url, headers={'Accept': 'image/png,image/jpeg,image/webp'}), timeout=20) as response:
+                raw = response.read(MAX_IMAGE_BYTES + 1)
+        except (HTTPError, URLError, TimeoutError, OSError):
+            raise ValueError('資料の画像を取得できません。GitHubに画像ファイルが保存されているか確認してください。') from None
+        extension = PurePosixPath(relative).suffix.lower()
+        valid = raw.startswith(b'\x89PNG\r\n\x1a\n') if extension == '.png' else raw.startswith(b'\xff\xd8\xff') if extension in {'.jpg', '.jpeg'} else raw.startswith(b'RIFF') and raw[8:12] == b'WEBP'
+        if not raw or len(raw) > MAX_IMAGE_BYTES or not valid:
+            raise ValueError('画像は正しいPNG・JPEG・WebP形式で、1枚2MB以内にしてください。')
+        files.append({'name': PurePosixPath(relative).name, 'relativePath': relative, 'data': base64.b64encode(raw).decode('ascii')})
+    return source, metadata, files
+
+
+def github_pending(vault):
+    urls = list_github_documents()
+    known = {record.get('source_url') for record in vault.records()}
+    return {'pending': sum(url not in known for url in urls), 'already_imported': sum(url in known for url in urls)}

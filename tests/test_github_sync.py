@@ -93,10 +93,11 @@ class GithubSyncTests(unittest.TestCase):
 
     def test_unsigned_other_owner_and_cross_site_do_not_list_or_download(self):
         with patch('document_import.list_github_documents') as listing, patch('document_import.fetch_github') as download:
-            for token in (None, 'other-token', 'invalid'):
-                with self.assertRaises(HTTPError) as error:
-                    self.call('/api/sync-github', {}, token)
-                self.assertEqual(error.exception.code, 401)
+            for endpoint in ('/api/sync-github', '/api/github-pending'):
+                for token in (None, 'other-token', 'invalid'):
+                    with self.assertRaises(HTTPError) as error:
+                        self.call(endpoint, {}, token)
+                    self.assertEqual(error.exception.code, 401)
             headers = {'Content-Type': 'application/json', 'Authorization': 'Bearer owner-token', 'Origin': 'https://evil.example'}
             with self.assertRaises(HTTPError) as error:
                 urlopen(Request(self.base+'/api/sync-github', data=b'{}', headers=headers))
@@ -121,5 +122,7 @@ if __name__ == '__main__':
     provider, app, threads = start_fixture(8772)
     patch('document_import.list_github_documents', return_value=[URL]).start()
     patch('document_import.fetch_github', return_value=(URL, documents.markdown_metadata(ITEM['name'], RAW), ITEM)).start()
+    image = {'name': 'preview.png', 'relativePath': 'assets/preview.png', 'data': 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII='}
+    patch('document_import.fetch_github_bundle', return_value=(URL, documents.markdown_metadata(ITEM['name'], RAW), [ITEM, image])).start()
     print('Auto-sync browser fixture running on port 8772', flush=True)
     threading.Event().wait()

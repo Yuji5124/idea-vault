@@ -182,7 +182,7 @@ CHROMIUM_PATH=/usr/bin/chromium node tests/cloud-browser.cjs
 
 ## 今後の拡張
 
-基本機能はAIなしで動きます。次の段階で、任意のAI分類、画像／PDFのOCR、全文索引、JIMA FILTER履歴・選択傾向の分析、PRINCIPLE LOOP / PIXVAULT / SOUNDVAULT / NEXUSとのJSON連携を追加できます。現時点ではファイル名によるタイトル候補とMIME判定のみを行い、AI解析やGitHub同期は実装していません。
+基本機能はAIなしで動きます。次の段階で、任意のAI分類、画像／PDFのOCR、全文索引、JIMA FILTER履歴・選択傾向の分析、PRINCIPLE LOOP / PIXVAULT / SOUNDVAULT / NEXUSとのJSON連携を追加できます。現時点ではファイル名によるタイトル候補とMIME判定のみを行い、AI解析は実装していません。クラウド版は後述のGitHub取り込みに対応します。
 
 ## パスワード再設定（Render / Supabase）
 
@@ -235,7 +235,7 @@ CHROMIUM_PATH=/usr/bin/chromium node tests/recovery-browser.cjs
 
 ## ChatGPTがGitHubへ保存したMarkdown資料の取り込み
 
-ChatGPTの「GitHubに保存しました」という案内は、GitHubへの保存を指します。IDEA VAULTのSupabase保管庫とは保存先が異なります。クラウド版は本人ログイン後、GitHubのmain/ideas内にある未取り込みのMarkdownを自動で保管庫へ取り込み、一覧へ表示します。リンク指定の手動取り込みも引き続き利用できます。
+ChatGPTの「GitHubに保存しました」という案内は、GitHubへの保存を指します。IDEA VAULTのSupabase保管庫とは保存先が異なります。クラウド版は本人ログイン後、GitHubのmain/ideas内にある未取り込みのMarkdownを確認し、「はい、読み込み開始」で画像とともに保管庫へ取り込み、一覧へ表示します。リンク指定の手動取り込みも引き続き利用できます。
 
 1. 本人アカウントでIDEA VAULTへログインします。
 2. **「GitHub資料を取り込む」**を押します。
@@ -283,9 +283,9 @@ Supabase Storageのオブジェクトキーには日本語などのUnicode名を
 
 ## ログイン後のGitHub自動取り込み
 
-ChatGPTが `Yuji5124/idea-vault` の **main → ideas/** にMarkdownを保存したあと、クラウド版IDEA VAULTを開いて本人ログインすると、新しい資料を自動で取り込みます。「GitHub資料を取り込む」でリンクを貼り付ける操作は通常不要です。保管庫の既存一覧を先に表示し、自動取り込みの進行・結果を一覧の上に表示します。
+ChatGPTが `Yuji5124/idea-vault` の **main → ideas/** にMarkdownを保存したあと、クラウド版IDEA VAULTを開いて本人ログインすると、新しい資料があれば「読み込みますか？」と表示します。「はい、読み込み開始」で取り込み、「あとで」で見送ります。「GitHub資料を取り込む」でリンクを貼り付ける操作は通常不要です。保管庫の既存一覧を先に表示し、自動取り込みの進行・結果を一覧の上に表示します。
 
-- `ideas/` の下の通常ファイル（`.md` / `.markdown`）をGitHub APIで確認し、未取り込み資料のタイトル・保存日・本文を同じ解析処理で抽出します。サブフォルダにも対応します。画像やシンボリックリンクは自動取得しません。
+- `ideas/` の下の通常ファイル（`.md` / `.markdown`）をGitHub APIで確認し、未取り込み資料のタイトル・保存日・本文を同じ解析処理で抽出します。サブフォルダにも対応します。画像はMarkdownの相対リンクから取得します。シンボリックリンクは一覧対象にしません。
 - GitHubリンクの `source_url` が保存済みなら取り込まず、利用者が編集した本文・タイトル・日付・分類を維持します。GitHub側で同じファイルが更新・削除されても既存記録を上書き・削除しません。ダウンロードして手動投入したファイルは取得元URLがないため、自動取り込みとは別の記録になります。
 - 未ログイン・再設定画面ではGitHubの一覧確認や資料取得を実行しません。ログアウト後は、遅れて返る結果を画面へ反映しません。認証情報をブラウザストレージへ保存しないため、再読み込み時には通常通りログインが必要です。
 - 本文・metadataはSupabase DB、元Markdownは非公開Storageへ保存します。日本語表示名は維持し、Storageキーは英数字IDを使います。Render FreeとRLS・本人UUID照合を維持します。
@@ -301,4 +301,15 @@ python3 tests/test_github_sync.py
 CHROMIUM_PATH=/usr/bin/chromium node tests/github-sync-browser.cjs
 ```
 
-実GitHub APIによる一覧取得、実Supabaseへの保存、Render上の自動取り込みは未検証です。開発環境の許可先には `api.github.com` がなく、実APIの一覧取得は実施していません。Renderへ手動デプロイ後、新しい資料の自動表示を確認してください。
+実GitHub APIによる一覧取得、実Supabaseへの保存、Render上の自動取り込みは未検証です。開発環境の許可先には `api.github.com` がなく、実APIの一覧取得は実施していません。Renderへ手動デプロイ後、新しい資料の確認ダイアログと承認後の表示を確認してください。
+
+
+## ※保存と画像付き資料
+
+「※保存」はこの会話での明示的な保存指示です。ChatGPT全体への自動設定ではありません。元画像を受け取ったら、画像を長辺1600px以下・2MB以下のWebPへ変換し、Markdownと一緒にGitHubのmain/ideasへ保存できます。変換補助ツールは `prepare_github_image.py 入力画像 ideas/assets/未使用名.webp` です。作業環境にPillowが必要で、Renderには導入不要です。元画像は変更せず、EXIF等を引き継ぎません。
+
+Markdownには `![画面](assets/未使用名.webp)` のように、Markdown所在フォルダからの相対リンクを記載してください。PNG/JPEG/WebPに対応し、画像は1資料最大4枚・各2MBです。外部URL、親フォルダ参照、SVG、クエリやフラグメント付きリンクは拒否します。参照画像がない、取得できない、形式・サイズが不正な資料は成功扱いにせず失敗を表示します。画像の説明だけから画像を生成することはありません。
+
+ログイン → 未取り込み資料数を確認 →「はい、読み込み開始」→ 本文・日付・タイトルと画像をSupabaseへ保存 → カード／詳細画面で表示 → 資料件数・画像件数・失敗件数を表示、という流れです。承認前は画像や本文を取得・保存しません。未ログイン時は一覧確認もしません。「あとで」は次のログイン時に再確認します。取り込み済み資料に後日画像を追加しても上書きしないため、画像とMarkdownをまとめて保存してから取り込んでください。
+
+実画像の提供がないため、利用者の画像変換・GitHub保存は未実施です。実Supabaseへの画像保存とRender上での動作も未検証です。

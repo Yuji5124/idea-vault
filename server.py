@@ -452,18 +452,21 @@ class Handler(BaseHTTPRequestHandler):
                         except (ValueError, KeyError, TypeError, OSError, binascii.Error) as error:
                             errors.append({'title': group.get('title', ''), 'error': str(error)})
                     self.send(200, {'records': saved, 'errors': errors})
+                elif self.path == '/api/github-pending':
+                    from document_import import github_pending
+                    self.send(200, github_pending(vault))
                 elif self.path == '/api/sync-github':
                     from document_import import sync_github_documents
                     self.send(200, sync_github_documents(vault, payload.get('attempted', [])))
                 elif self.path == '/api/import-github':
-                    from document_import import fetch_github, github_location
+                    from document_import import fetch_github_bundle, github_location
                     source, _, _ = github_location(payload.get('url'))
                     existing = next((record for record in vault.records() if record.get('source_url') == source), None)
                     if existing:
                         self.send(200, {'record': existing, 'already_imported': True})
                     else:
-                        source, metadata, item = fetch_github(source)
-                        record = vault.create(files=[item], source_url=source, **metadata)
+                        source, metadata, files = fetch_github_bundle(source)
+                        record = vault.create(files=files, source_url=source, **metadata)
                         self.send(201, {'record': record, 'already_imported': False})
                 elif self.path == '/api/create':
                     self.send(201, vault.create(payload['title'], kind=payload.get('type', 'IDEA'), body=payload.get('body', ''), record_date=payload.get('record_date')))

@@ -54,22 +54,34 @@ async function syncGithubAfterLogin(epoch){
   const status=$('#githubSyncStatus');
   if(!cloudMode||!session||epoch!==authEpoch)return;
   status.hidden=false;status.textContent='GitHubの新しい資料を確認しています…';
-  let imported=0, failed=0;
+  let imported=0, failed=0, images=0;
   const attempted=[];
   try{
+    const pending=await api('/api/github-pending',{});
+    if(!session||epoch!==authEpoch)return;
+    if(!pending.pending){status.textContent='GitHub資料は取り込み済みです。';return;}
+    const dialog=$('#githubConfirm');$('#githubConfirmCount').textContent=`新しい資料が${pending.pending}件あります。`;
+    const accepted=await new Promise(resolve=>{
+      const finish=value=>{dialog.close();dialog.onclose=null;dialog.oncancel=null;resolve(value);};
+      $('#githubYes').onclick=()=>finish(true);$('#githubLater').onclick=()=>finish(false);
+      dialog.oncancel=e=>{e.preventDefault();finish(false);};dialog.onclose=()=>{dialog.onclose=null;resolve(false);};dialog.showModal();
+    });
+    if(!session||epoch!==authEpoch)return;
+    if(!accepted){status.textContent='読み込みを見送りました。次のログイン時に再確認します。';return;}
+    status.textContent='GitHub資料と画像の読み込みを開始しました…';
     // Batches keep each request bounded; one login handles up to 100 documents.
     for(let batch=0;batch<20;batch++){
       if(!session||epoch!==authEpoch)return;
       const result=await api('/api/sync-github',{attempted});
       if(!session||epoch!==authEpoch)return;
-      imported+=result.imported;failed+=result.failed;
+      imported+=result.imported;failed+=result.failed;images+=result.images||0;
       attempted.push(...(result.attempted||[]));
       await refresh();
       if(!session||epoch!==authEpoch)return;
-      if(!result.remaining){status.textContent=failed?`GitHub資料を${imported}件取り込みました。${failed}件は取り込めませんでした。リンク指定で再試行してください。`:imported?`GitHubの新しい資料を${imported}件取り込みました。`:'GitHub資料は取り込み済みです。';return;}
-      status.textContent=`GitHub資料を${imported}件取り込みました。続けて確認しています…`;
+      if(!result.remaining){status.textContent=failed?`GitHub資料を${imported}件・画像${images}枚取り込みました。${failed}件は取り込めませんでした。リンク指定で再試行してください。`:imported?`GitHubの新しい資料を${imported}件・画像${images}枚取り込みました。`:'GitHub資料は取り込み済みです。';return;}
+      status.textContent=`GitHub資料を${imported}件・画像${images}枚取り込みました。続けて確認しています…`;
     }
-    status.textContent=`GitHub資料を${imported}件取り込みました。残りは次のログイン時に確認します。${failed?failed+'件は取り込めませんでした。':''}`;
+    status.textContent=`GitHub資料を${imported}件・画像${images}枚取り込みました。残りは次のログイン時に確認します。${failed?failed+'件は取り込めませんでした。':''}`;
   }catch{if(session&&epoch===authEpoch)status.textContent='GitHubの自動取り込みを完了できませんでした。接続・公開範囲・API利用制限を確認してください。既存資料は利用できます。必要な資料はリンク指定でも取り込めます。';}
 }
 $('#githubImport').onclick=()=>{if(cloudMode&&!session){toast('ログインしてください。',true);return;}$('#githubForm').reset();$('#githubStatus').textContent='';$('#githubDialog').showModal();};
