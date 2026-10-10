@@ -272,6 +272,11 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header('Content-Type', mime)
         self.send_header('Content-Length', str(len(body)))
+        if self.extension_origin():
+            self.send_header('Access-Control-Allow-Origin', self.extension_origin())
+            self.send_header('Vary', 'Origin')
+            self.send_header('Access-Control-Allow-Methods', 'POST')
+            self.send_header('Access-Control-Allow-Headers', 'Authorization, Content-Type')
         self.send_header('X-Content-Type-Options', 'nosniff')
         self.send_header('Cache-Control', 'no-store')
         self.send_header('Referrer-Policy', 'no-referrer')
@@ -341,6 +346,18 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             self.send(500, {'error': '保存データを読み込めません。サーバー側の保存先を確認してください。'})
 
+    def extension_origin(self):
+        origin = self.headers.get('Origin', '')
+        ids = getattr(self.server, 'extension_ids', ())
+        return origin if self.cloud_config() and origin in {'chrome-extension://' + identifier for identifier in ids} and self.path in {'/api/login', '/api/refresh', '/api/logout', '/api/star-save', '/api/star-status'} else None
+
+    def do_OPTIONS(self):
+        requested = {h.strip().lower() for h in self.headers.get('Access-Control-Request-Headers', '').split(',') if h.strip()}
+        if self.headers.get('Host', '') not in self.allowed_hosts() or not self.extension_origin() or self.headers.get('Access-Control-Request-Method') != 'POST' or not requested <= {'authorization', 'content-type'}:
+            self.send(403, {'error': '拡張機能の接続を許可していません。'})
+            return
+        self.send(204, b'')
+
     def do_POST(self):
         # Reject cross-site writes and DNS rebinding to the loopback service.
         host = self.headers.get('Host', '')
@@ -349,7 +366,7 @@ class Handler(BaseHTTPRequestHandler):
         origins = {f'http://127.0.0.1:{self.server.server_port}', f'http://localhost:{self.server.server_port}'}
         if getattr(self.server, 'public_host', None):
             origins.add('https://' + self.server.public_host)
-        if host not in allowed or (origin and origin not in origins):
+        if host not in allowed or (origin and origin not in origins and not self.extension_origin()):
             self.send(403, {'error': 'ローカルの同一オリジンからアクセスしてください'})
             return
         auth_operation = bool(self.cloud_config() and self.path in {'/api/login', '/api/refresh', '/api/recovery-check', '/api/reset-password'})
@@ -452,6 +469,11 @@ class Handler(BaseHTTPRequestHandler):
                         except (ValueError, KeyError, TypeError, OSError, binascii.Error) as error:
                             errors.append({'title': group.get('title', ''), 'error': str(error)})
                     self.send(200, {'records': saved, 'errors': errors})
+                elif self.path in {'/api/star-save', '/api/star-status'}:
+                    if not self.cloud_config():
+                        raise ValueError('本人認証付きクラウド保存専用です。')
+                    from star_save import save_capture, capture_status
+                    self.send(200, save_capture(vault, payload) if self.path == '/api/star-save' else capture_status(vault, payload))
                 elif self.path == '/api/github-pending':
                     from document_import import github_pending
                     self.send(200, github_pending(vault))
@@ -520,6 +542,10 @@ def main():
     server.public_host = public_host
     server.password = password if not cloud else None
     server.cloud_config = config
+    extension_ids = os.environ.get('IDEA_VAULT_EXTENSION_IDS', '').split(',')
+    if any(identifier and not re.fullmatch(r'[a-p]{32}', identifier.strip()) for identifier in extension_ids):
+        parser.error('IDEA_VAULT_EXTENSION_IDSにはChrome拡張機能IDを指定してください')
+    server.extension_ids = tuple(identifier.strip() for identifier in extension_ids if identifier.strip())
     server.cloud_lock = threading.RLock()
     if not cloud:
         server.vault = Vault(args.data_dir)

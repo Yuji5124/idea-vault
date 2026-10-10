@@ -1,0 +1,6 @@
+<!doctype html><html lang="ja"><meta charset="utf-8"><title>IDEA VAULT ※保存の設定</title><link rel="stylesheet" href="options.css"><body>
+<h1>IDEA VAULT ※保存</h1><p id="state" role="status"></p><p>拡張機能ID：<code id="extensionId"></code></p>
+<form id="settings"><label>接続先<input name="target" type="url" value="https://idea-vault-cmgl.onrender.com" readonly></label><label><input name="enabled" type="checkbox">自動保存ON</label><button>設定を保存</button></form>
+<form id="login"><label>本人メール<input name="email" type="email" autocomplete="username" required></label><label>パスワード<input name="password" type="password" autocomplete="current-password" required></label><button>ログイン</button></form>
+<button id="test">接続テスト</button><button id="logout">ログアウト</button><button id="images">画像取得権限を許可</button>
+<p>認証は拡張機能内だけで保持します。Chrome終了時に再ログインが必要です。画像を取得できない場合は保存を止めて通知します。</p><script src="options.js"></script></body></html>

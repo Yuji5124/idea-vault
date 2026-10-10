@@ -87,14 +87,16 @@ class CloudVault:
             if not rows:
                 raise CloudError('記録を更新できませんでした。')
 
-    def create(self, title, files=(), kind='IDEA', inbox=True, body='', record_date=None, source_url=None):
+    def create(self, title, files=(), kind='IDEA', inbox=True, body='', record_date=None, source_url=None, identifier=None):
         from server import stamp, dated, KINDS
         if kind not in KINDS or not isinstance(title, str) or not title.strip() or not isinstance(body, str):
             raise CloudError('タイトル・分類・本文を確認してください。')
         from document_import import record_date as validate_date
         document_date = validate_date(record_date) if record_date is not None else None
+        if identifier is not None and not re.fullmatch(r'[a-f0-9]{32}', identifier):
+            raise CloudError('保存IDが不正です。')
         now = stamp()
-        record = {'schema_version': 1, 'id': uuid.uuid4().hex, 'title': title.strip(), 'type': kind, 'inbox': inbox,
+        record = {'schema_version': 1, 'id': identifier or uuid.uuid4().hex, 'title': title.strip(), 'type': kind, 'inbox': inbox,
                   'category': '', 'tags': [], 'body': body, 'relations': [], 'jima_filter': '未評価', 'comment': '',
                   'created_at': now, 'imported_at': now, 'updated_at': now, 'files': [],
                   'folder': ('inbox' if inbox else {'SOURCE': 'sources', 'PRINCIPLE': 'principles'}.get(kind, 'ideas')) + '/' + dated(title, document_date or now[:10])}

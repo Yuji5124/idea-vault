@@ -121,3 +121,16 @@ GitHub APIは模擬応答で検証しました。開発環境のネットワー�
 実GitHub一覧API、実Supabaseへの画像保存、Renderへの新版デプロイは未検証です。元画像未提供のため、利用者の実画像変換・GitHub保存は未実施です。以前の自動取り込みの記録に対し、現在の仕様は確認後に取り込みを開始します。
 
 既存のcloud-browser、recovery-browser、document-browserも再実行し、通常ログイン・添付・再設定・手動取り込み・日付整理の全シナリオが成功しました。
+
+## 2026-10-10：ChatGPT「※」保存Chrome拡張の試作
+
+- 既存56件＋保存API関連8件＝**unittest 64件すべて成功**。本文原文・日本語・長文、1枚／複数画像の元バイト、保存後のStorage再取得、同じ対象の再試行と編集維持、未ログイン／別ユーザー拒否、正確なOriginとpreflight範囲、不正画像／会話URL拒否、保存後のハッシュ不一致で成功を返さないことを確認。
+- `star-worker.cjs`：拡張APIを模擬したworkerから実HTTPで模擬Supabaseへ保存・再取得。画像取得失敗時に本文も送信しないこと、通信断の再試行、非公開API／Cookie／外部画像／縮小パラメータを使わないこと、送信元分離、永続領域に認証情報がないことを検証。
+- `star-extension-browser.cjs`：実Chromiumの合成ChatGPT DOMで、入力操作と単独マーカー、文章／複数画像、別回答の画像の確認・キャンセル、ON/OFF、見出し／リスト／コード／表の変換を確認。実ChatGPTのDOMではありません。
+- `star-mv3-browser.cjs`：実MV3ロードを試みましたが、この環境のChromium 151ではserviceworker起動待ちがタイムアウトしました。chrome://extensionsで試作が読み込まれていないことを確認。環境のポリシー・セキュリティを変更して回避していません。**実MV3ロードは失敗／未検証**として扱います。
+- 実Supabase接続に必要な環境変数・認証はこの環境にありません。実Supabase、Windows Chrome、実ChatGPTの生成画像、Renderの新APIは未検証です。クラウド実機成功を主張しません。
+- 原MarkdownソースはDOMにないことがあり、元記法との完全一致は保証できません。画像が非公開APIにしかない場合は自動取得できません。この試作は全対象取得後に保存するため、画像を省いた部分成功は作りません。
+
+mainは変更せず、Render Free・RLS・非公開Storageを維持しています。
+
+`star-display-browser.cjs`も成功。拡張workerが模擬Supabaseへ作成した記録を、本人ログインしたIDEA VAULTの画面から再取得し、添付画像のデコード・原文表示・ログアウト後の非表示を確認しました。

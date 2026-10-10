@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "IDEA VAULT ※保存",
+  "version": "0.1.0",
+  "description": "ChatGPTの完成済み回答を本人のIDEA VAULTへ保存します。AI APIは使いません。",
+  "permissions": ["storage"],
+  "host_permissions": ["https://idea-vault-cmgl.onrender.com/*"],
+  "optional_host_permissions": ["https://*.oaiusercontent.com/*"],
+  "background": {"service_worker": "background.js", "type": "module"},
+  "content_scripts": [{"matches": ["https://chatgpt.com/*"], "js": ["dom.js", "content.js"]}],
+  "options_page": "options.html",
+  "action": {"default_title": "IDEA VAULTの設定", "default_popup": "options.html"}
+}

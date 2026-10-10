@@ -1,0 +1,32 @@
+const {chromium}=require('playwright');
+const assert=require('node:assert/strict');
+const path=require('node:path');
+(async()=>{
+ const browser=await chromium.launch({headless:true,executablePath:'/usr/bin/chromium',args:['--no-sandbox']});
+ const page=await browser.newPage();let captures=[];let allow=true;
+ await page.exposeFunction('vaultMessage',msg=>{if(msg.type==='state')return {ok:true,enabled:allow};captures.push(msg.capture);return {ok:true,texts:1,images:msg.capture.imageUrls.length};});
+ await page.route('https://chatgpt.com/**',r=>r.fulfill({contentType:'text/html',body:'<html><body><main id="conversation"></main><textarea id="prompt-textarea"></textarea></body></html>'}));
+ await page.goto('https://chatgpt.com/c/fixture');
+ await page.evaluate(()=>{window.chrome={runtime:{sendMessage:m=>window.vaultMessage(m)}};window.confirm=()=>true;});
+ await page.addScriptTag({path:path.resolve('chrome-extension/dom.js')});
+ await page.addScriptTag({path:path.resolve('chrome-extension/content.js')});
+ async function add(role,html){if(role==='user'&&html==='※'){await page.locator('#prompt-textarea').fill('※');await page.locator('#prompt-textarea').press('Enter');}await page.evaluate(({role,html})=>{const n=document.createElement('div');n.dataset.messageAuthorRole=role;n.innerHTML=html;document.querySelector('#conversation').append(n);},{role,html});}
+ const expected='# Title\n\n原文 **太字**\n改行\n\n- first\n- second\n\n```js\nconst a = 1;\n```\n\n| A | B |\n| --- | --- |\n| 1 | 2 |';
+ await add('assistant','<div class="markdown"><h1>Title</h1><p>原文 <strong>太字</strong><br>改行</p><ul><li>first</li><li>second</li></ul><pre><code class="language-js">const a = 1;\n</code></pre><table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table></div>');
+ await add('user','文中の※は保存しない');await page.waitForTimeout(550);assert.equal(captures.length,0);
+ await add('user','※');await page.waitForFunction(()=>document.querySelector('#idea-vault-notice')?.textContent.includes('保存しました'));
+ assert.equal(captures.length,1);assert.equal(captures[0].body,expected);assert.equal(captures[0].imageUrls.length,0);
+ await add('assistant','<div class="markdown"><p>※への返答は保存対象にしない</p></div>');await add('user','※');await page.waitForTimeout(600);assert.equal(captures.length,2);assert.equal(captures[1].body,expected);
+ captures.pop();
+ await add('user','画像付きアイデア');await add('assistant','<div class="markdown"><h1>Images</h1><p>画像付きの原文</p><img alt="Generated image" src="https://assets.oaiusercontent.com/original1.png"><img alt="Generated image" src="https://assets.oaiusercontent.com/original2.png"></div>');
+ await add('user','※');await page.waitForTimeout(600);assert.equal(captures.length,2);assert.equal(captures[1].imageUrls.length,2);
+ await add('user','説明を整理');await add('assistant','<div class="markdown"><h1>Separate</h1><p>画像とは別回答の文章</p></div>');
+ let confirms=0;await page.exposeFunction('recordConfirm',()=>confirms++);await page.evaluate(()=>window.confirm=()=>{window.recordConfirm();return false;});
+ await add('user','※');await page.waitForTimeout(600);assert.equal(captures.length,2);assert.equal(confirms,1);
+ await page.evaluate(()=>window.confirm=()=>true);await add('user','※');await page.waitForTimeout(600);assert.equal(captures.length,3);assert.equal(captures[2].imageUrls.length,2);assert.match(captures[2].body,/画像とは別回答/);
+ allow=false;await add('user','※');await page.waitForTimeout(600);assert.equal(captures.length,3);
+ const text=await page.evaluate(()=>VaultDOM.text(Object.assign(document.createElement('div'),{innerHTML:'<div class="markdown"><pre><code>```\nraw</code></pre></div>'})));assert.match(text,/^````/);
+ assert.equal(await page.evaluate(()=>localStorage.length+sessionStorage.length),0);
+ console.log('PASS: isolated DOM adapter preserves headings/lists/code/table, exact marker, text-only/multiple images, separate-answer confirmation/cancel, OFF, no browser token storage');
+ await browser.close();
+})().catch(e=>{console.error(e.name);console.error(e.stack);process.exitCode=1;});
