@@ -452,6 +452,9 @@ class Handler(BaseHTTPRequestHandler):
                         except (ValueError, KeyError, TypeError, OSError, binascii.Error) as error:
                             errors.append({'title': group.get('title', ''), 'error': str(error)})
                     self.send(200, {'records': saved, 'errors': errors})
+                elif self.path == '/api/sync-github':
+                    from document_import import sync_github_documents
+                    self.send(200, sync_github_documents(vault, payload.get('attempted', [])))
                 elif self.path == '/api/import-github':
                     from document_import import fetch_github, github_location
                     source, _, _ = github_location(payload.get('url'))

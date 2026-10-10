@@ -111,3 +111,60 @@ def fetch_github(url):
     metadata = markdown_metadata(name, raw)
     item = {'name': name, 'relativePath': name, 'data': base64.b64encode(raw).decode('ascii')}
     return source, metadata, item
+
+MAX_TREE_BYTES = 4 * 1024 * 1024
+SYNC_BATCH_SIZE = 5
+
+
+def list_github_documents():
+    """Enumerate only regular Markdown blobs in the fixed repository's ideas tree."""
+    import json
+    endpoint = 'https://api.github.com/repos/Yuji5124/idea-vault/git/trees/main?recursive=1'
+    try:
+        with build_opener(NoRedirect()).open(Request(endpoint, headers={
+            'Accept': 'application/vnd.github+json',
+            'User-Agent': 'IDEA-VAULT',
+            'X-GitHub-Api-Version': '2022-11-28',
+        }), timeout=20) as response:
+            raw = response.read(MAX_TREE_BYTES + 1)
+        if len(raw) > MAX_TREE_BYTES:
+            raise ValueError('GitHubの資料一覧が大きすぎます。リンク指定で取り込んでください。')
+        data = json.loads(raw)
+        if not isinstance(data, dict) or data.get('truncated') is not False or not isinstance(data.get('tree'), list):
+            raise ValueError('GitHubの資料一覧を完全に取得できません。リンク指定で取り込んでください。')
+        urls = set()
+        for entry in data['tree']:
+            if not isinstance(entry, dict):
+                raise ValueError('GitHubの資料一覧を確認できません。')
+            path = entry.get('path')
+            if entry.get('type') != 'blob' or entry.get('mode') not in {'100644', '100755'} or not isinstance(path, str) or not path.startswith('ideas/') or PurePosixPath(path).suffix.lower() not in {'.md', '.markdown'}:
+                continue
+            source, _, _ = github_location('https://github.com/Yuji5124/idea-vault/blob/main/' + quote(path, safe='/'))
+            urls.add(source)
+        return sorted(urls)
+    except (HTTPError, URLError, TimeoutError, OSError):
+        raise ValueError('GitHubの自動取り込みを確認できません。接続・公開範囲・API利用制限を確認してください。保管庫の既存資料は利用できます。') from None
+    except (UnicodeError, json.JSONDecodeError):
+        raise ValueError('GitHubの資料一覧を確認できません。保管庫の既存資料は利用できます。') from None
+
+
+def sync_github_documents(vault, attempted=()):
+    if not isinstance(attempted, (list, tuple)) or len(attempted) > 100:
+        raise ValueError('自動取り込みの指定を確認してください。')
+    attempted = {github_location(url)[0] for url in attempted}
+    urls = list_github_documents()
+    known = {record.get('source_url') for record in vault.records()}
+    pending = [url for url in urls if url not in known and url not in attempted]
+    imported = 0
+    errors = []
+    for source in pending[:SYNC_BATCH_SIZE]:
+        try:
+            source, metadata, item = fetch_github(source)
+            vault.create(files=[item], source_url=source, **metadata)
+            imported += 1
+        except (ValueError, KeyError, TypeError, OSError):
+            # No filenames, provider response bodies or user data in sync errors.
+            errors.append('取り込めない資料がありました。資料の形式・保存先設定を確認し、リンク指定で再試行してください。')
+    return {'imported': imported, 'already_imported': sum(url in known for url in urls),
+            'failed': len(errors), 'errors': errors,
+            'remaining': max(0, len(pending)-SYNC_BATCH_SIZE), 'attempted': pending[:SYNC_BATCH_SIZE]}

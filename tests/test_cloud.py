@@ -113,6 +113,13 @@ def start_fixture(port=0):
     app = ThreadingHTTPServer(('127.0.0.1', port), Handler)
     app.cloud_config = (f'http://127.0.0.1:{provider.server_port}', 'test-publishable', OWNER)
     app.cloud_lock = threading.RLock()
+    listing = patch('document_import.list_github_documents', return_value=[])
+    listing.start()
+    original_close = app.server_close
+    def close_with_listing_cleanup():
+        listing.stop()
+        original_close()
+    app.server_close = close_with_listing_cleanup
     threads = []
     for server in (provider, app):
         thread = threading.Thread(target=server.serve_forever, daemon=True)
