@@ -148,3 +148,6 @@ mainは変更せず、Render Free・RLS・非公開Storageを維持していま�
 - 既存cloud-browser、recovery-browser、document-browser、github-sync-browserもすべて再実行して成功。説明保存の確認画面に合わせて既存ブラウザテストを更新。
 
 実Supabase、実ChatGPT履歴、実Windows Chrome／iPad Safari、新版のRender本番反映は未検証。対象期間の個人データは未提供で、実登録0件／更新0件／保存画像0枚。未取得画像・重複・保留件数は未集計。試験データの保存を本人データの保存完了として報告しません。
+
+## codex/chatgpt-star-saveへの管理機能反映（2026-10-11）
+文章のみ取り込みの変更を含めず、画像付き保存・編集・履歴・ゴミ箱・復元を同ブランチに反映。全79件成功。Chromiumによる模擬Supabase試験で画像原本の再取得一致、削除・復元・完全削除、画像付きZIP取り込み、PC/iPadサイズを再確認して成功。実Supabase・Render本番反映は未実施。mainは変更していません。
