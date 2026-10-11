@@ -93,7 +93,7 @@ class Vault:
         data = {k: v for k, v in record.items() if k != 'folder'}
         atomic_json(self.root / folder / 'metadata.json', data)
 
-    def create(self, title, files=(), kind='IDEA', inbox=True, body='', record_date=None, source_url=None):
+    def create(self, title, files=(), kind='IDEA', inbox=True, body='', record_date=None, source_url=None, identifier=None, extra_metadata=None):
         if kind not in KINDS:
             raise ValueError('分類が不正です')
         if not isinstance(title, str) or not title.strip():
@@ -107,13 +107,15 @@ class Vault:
             destination = unique_path(self.root / area, dated(title, day))
             staging = self.root / '.staging' / uuid.uuid4().hex
             staging.mkdir()
-            record = {'schema_version': 1, 'id': uuid.uuid4().hex, 'title': title.strip(),
+            record = {'schema_version': 1, 'id': identifier or uuid.uuid4().hex, 'title': title.strip(),
                       'type': kind, 'inbox': inbox, 'category': '', 'tags': [],
                       'body': body, 'relations': [], 'jima_filter': '未評価', 'comment': '',
                       'created_at': now, 'imported_at': now, 'updated_at': now, 'files': []}
             record['record_date'] = document_date or now[:10]
             if source_url is not None:
                 record['source_url'] = source_url
+            if extra_metadata:
+                record.update(extra_metadata)
             try:
                 for item in files:
                     raw = base64.b64decode(item['data'], validate=True)
@@ -136,6 +138,12 @@ class Vault:
                         'original_name': original, 'original_path': item.get('relativePath', original),
                         'path': str(path.relative_to(staging)), 'mime': mime, 'size': len(raw),
                         'created_at': created, 'text': text})
+                    if item.get('thumbnail'):
+                        from record_management import thumbnail_descriptor
+                        thumb,thumb_raw=thumbnail_descriptor(item['thumbnail'])
+                        (staging / thumb['path']).parent.mkdir(exist_ok=True)
+                        (staging / thumb['path']).write_bytes(thumb_raw)
+                        record['files'][-1]['thumbnail']=thumb
                 if record['files']:
                     record['created_at'] = min(f['created_at'] for f in record['files'])
                 (staging / 'idea.md').write_text(body, encoding='utf-8')
@@ -170,7 +178,11 @@ class Vault:
                     raise ValueError('関連先が不正です')
             if 'inbox' in changes and not isinstance(changes['inbox'], bool):
                 raise ValueError('INBOX の指定が不正です')
-            for key in ('title', 'type', 'category', 'tags', 'body', 'relations', 'jima_filter', 'comment', 'inbox', 'record_date'):
+            from record_management import validate_changes, revision
+            validate_changes(changes)
+            if record.get('deleted_at'): raise ValueError('ゴミ箱の記録は先に復元してください。')
+            revision(record)
+            for key in ('title', 'type', 'category', 'tags', 'body', 'relations', 'jima_filter', 'comment', 'inbox', 'record_date', 'summary', 'status', 'experience', 'principle', 'appeal', 'development', 'production', 'variant'):
                 if key in changes:
                     record[key] = changes[key]
             record['updated_at'] = stamp()
@@ -191,6 +203,9 @@ class Vault:
             if source_id == target_id:
                 raise ValueError('別の記録を選択してください')
             source, target = self.get(source_id), self.get(target_id)
+            if source.get('deleted_at') or target.get('deleted_at'): raise ValueError('ゴミ箱の記録は先に復元してください。')
+            from record_management import revision
+            revision(source,'添付の移動');revision(target,'添付の受け入れ')
             selected = [f for f in source['files'] if f['id'] in file_ids]
             if not selected:
                 raise ValueError('移動するファイルを選択してください')
@@ -202,6 +217,8 @@ class Vault:
                     path = unique_path(directory, file['name'])
                     shutil.copy2(self.root / source['folder'] / file['path'], path)
                     copied.append(path)
+                    if file.get('thumbnail'):
+                        thumbnail=file['thumbnail'];thumbnail_dest=self.root/target['folder']/thumbnail['path'];thumbnail_dest.parent.mkdir(exist_ok=True);shutil.copy2(self.root/source['folder']/thumbnail['path'],thumbnail_dest);copied.append(thumbnail_dest)
                     target['files'].append({**file, 'name': path.name, 'path': str(path.relative_to(self.root / target['folder']))})
                 target['relations'] = sorted(set(target['relations'] + [source_id]))
                 target['updated_at'] = stamp()
@@ -210,13 +227,12 @@ class Vault:
                 for path in copied:
                     path.unlink(missing_ok=True)
                 raise
+            source.setdefault('archived_files',[]).extend(selected)
             source['files'] = [f for f in source['files'] if f['id'] not in file_ids]
             source['relations'] = sorted(set(source['relations'] + [target_id]))
             source['updated_at'] = stamp()
             self.save(source)
             # Retain the source note/evaluation and relation, even when empty.
-            for file in selected:
-                (self.root / source['folder'] / file['path']).unlink()
             return target
 
 
@@ -302,7 +318,7 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == '/api/config':
             self.send(200, {'storage': 'cloud' if self.cloud_config() else 'local'})
             return
-        public_files = {'/': 'index.html', '/app.js': 'app.js', '/style.css': 'style.css', '/recovery.js': 'recovery.js'}
+        public_files = {'/': 'index.html', '/app.js': 'app.js', '/style.css': 'style.css', '/management.js': 'management.js', '/recovery.js': 'recovery.js'}
         if self.cloud_config() and parsed.path in public_files:
             name = public_files[parsed.path]
             self.send(200, (WEB / name).read_bytes(), mimetypes.guess_type(name)[0] + '; charset=utf-8')
@@ -321,7 +337,8 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError('ファイルが見つかりません')
                 vault = self.vault()
                 record = vault.get(parts[3])
-                file = next((f for f in record['files'] if f['id'] == parts[4]), None)
+                from record_management import retained_files
+                file = next((f for f in retained_files(record) if f['id'] == parts[4]), None)
                 if not file:
                     raise ValueError('ファイルが見つかりません')
                 if self.cloud_config():
@@ -336,7 +353,7 @@ class Handler(BaseHTTPRequestHandler):
                 download = 'download' in parse_qs(parsed.query, keep_blank_values=True) or mime == 'application/octet-stream'
                 self.send(200, contents, mime, file['name'] if download else None)
             else:
-                name = {'/': 'index.html', '/app.js': 'app.js', '/style.css': 'style.css', '/recovery.js': 'recovery.js'}.get(parsed.path)
+                name = {'/': 'index.html', '/app.js': 'app.js', '/style.css': 'style.css', '/management.js': 'management.js', '/recovery.js': 'recovery.js'}.get(parsed.path)
                 if not name:
                     self.send(404, {'error': '見つかりません'})
                     return
@@ -485,14 +502,26 @@ class Handler(BaseHTTPRequestHandler):
                     source, _, _ = github_location(payload.get('url'))
                     existing = next((record for record in vault.records() if record.get('source_url') == source), None)
                     if existing:
+                        if existing.get('deleted_at'): raise ValueError('ゴミ箱の資料です。先に復元してください。')
                         self.send(200, {'record': existing, 'already_imported': True})
                     else:
                         source, metadata, files = fetch_github_bundle(source)
                         record = vault.create(files=files, source_url=source, **metadata)
                         self.send(201, {'record': record, 'already_imported': False})
+                elif self.path == '/api/backup':
+                    from backup_export import export
+                    self.send(200, export(vault), 'application/zip', 'idea-vault-backup.zip')
+                elif self.path == '/api/manage':
+                    from record_management import manage
+                    self.send(200, manage(vault, payload))
+                elif self.path in {'/api/history-preview', '/api/history-commit'}:
+                    from history_import import preview, commit
+                    self.send(200, preview(vault,payload) if self.path == '/api/history-preview' else commit(vault,payload))
                 elif self.path == '/api/create':
                     self.send(201, vault.create(payload['title'], kind=payload.get('type', 'IDEA'), body=payload.get('body', ''), record_date=payload.get('record_date')))
                 elif self.path == '/api/update':
+                    if payload.get('expected_updated_at') and vault.get(payload['id'])['updated_at'] != payload['expected_updated_at']:
+                        raise ValueError('他の操作で編集されました。画面を更新して再確認してください。')
                     self.send(200, vault.update(payload['id'], payload['changes']))
                 elif self.path == '/api/transfer':
                     self.send(200, vault.transfer(payload['source'], payload['target'], payload['files']))

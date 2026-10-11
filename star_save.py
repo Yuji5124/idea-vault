@@ -52,6 +52,8 @@ def save_capture(vault, payload):
         files.append({'name': filename + f'_{index+1:02}' + extension, 'data': encoded})
     identifier = digest((source + '\n' + '\n'.join(hashes)).encode())[:32]
     existing = next((r for r in vault.records() if r['id'] == identifier), None)
+    if existing and existing.get('deleted_at'):
+        raise ValueError('ゴミ箱の記録です。IDEA VAULTで復元してください。')
     if not existing:
         vault.create(title, files=files, kind='IDEA', inbox=True, body=body, record_date=day, source_url=source, identifier=identifier)
     status = capture_status(vault, {'id': identifier})

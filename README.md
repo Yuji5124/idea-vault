@@ -319,3 +319,9 @@ Markdownには `![画面](assets/未使用名.webp)` のように、Markdown所�
 `chrome-extension/` にManifest V3の試作を追加しました。本人ログインした拡張機能から、完成済み回答の文章と取得可能な元画像をSupabaseへ直接保存し、Storageから再取得して原本ハッシュを検証します。追加AI処理は使いません。
 
 導入手順、拡張IDのOrigin設定、取得できる画像の条件、Markdown復元の限界、実機未検証事項は [拡張機能README](chrome-extension/README.md) を参照してください。作業ブランチは `codex/chatgpt-star-save` で、main・現在のRenderデプロイは変更していません。
+
+## 過去アイデア・画像の一括取り込み／更新履歴／ゴミ箱
+
+作業ブランチ `codex/history-import-trash` に、確認付きChatGPT履歴インポート、説明の変更前後と履歴、画像追加・並べ替え・後日の関連付け、ソフトデリート・復元・1件ずつの完全削除、認証付きZIPバックアップを追加しました。
+
+手順・対応形式・無料枠の上限・失敗時の扱い・実データ未取り込み事項は [HISTORY_IMPORT.md](HISTORY_IMPORT.md) を参照してください。SQLの変更や既存データの初期化は不要です。main・現在の本番環境には反映していません。

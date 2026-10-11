@@ -1,11 +1,11 @@
 <!doctype html>
 <html lang="ja">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>IDEA VAULT — 発想の保管庫</title><script src="/recovery.js"></script><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>IDEA VAULT — 発想の保管庫</title><script src="/recovery.js"></script><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script><script src="/management.js" defer></script></head>
 <body>
 <aside class="sidebar">
   <a class="brand" href="/" aria-label="IDEA VAULT ホーム"><span class="brandmark">◈</span><span>IDEA<br>VAULT<span class="brandcaption">YOUR CREATIVE ARCHIVE</span></span></a>
-  <div class="navcaption">LIBRARY</div>
-  <nav id="navigation">
+  <div class="navcaption">LIBRARY</div><button class="nav" id="historyImport">ChatGPT履歴インポート</button><button class="nav" id="downloadBackup">バックアップ取得</button>
+  <nav id="navigation"><button class="nav" data-view="TRASH">▧ ゴミ箱</button>
     <button class="nav active" data-view="ALL"><span>▦</span>すべての記録 <b id="countAll">0</b></button>
     <button class="nav" data-view="INBOX"><span>↓</span>INBOX <b id="countInbox">0</b></button>
     <button class="nav" data-view="TIMELINE"><span>◷</span>タイムライン</button>
@@ -32,7 +32,7 @@
   <section class="library">
     <div class="library-heading"><h2 id="sectionTitle">RECENT <span>最近のひらめき</span></h2><span id="resultCount">0 records</span></div>
     <div class="filters"><label class="searchbox"><span>⌕</span><input id="search" type="search" placeholder="タイトル、タグ、原理から探す…" aria-label="キーワード検索"><kbd>/</kbd></label><select id="rating" aria-label="JIMA FILTERで絞り込む"><option value="">JIMA FILTER · すべて</option><option>GOOD</option><option>HOLD</option><option>BAD</option><option>未評価</option></select></div>
-    <div class="organize-filters"><label>資料の日付から<input id="dateFrom" type="date"></label><label>資料の日付まで<input id="dateTo" type="date"></label><label>並び順<select id="sortOrder"><option value="newest">日付が新しい順</option><option value="oldest">日付が古い順</option><option value="title">タイトル順</option></select></label><button class="secondary" id="clearOrganization">日付をリセット</button></div>
+    <div class="organize-filters"><label>カテゴリー<select id="categoryFilter"><option value="">すべて</option></select></label><label>資料の日付から<input id="dateFrom" type="date"></label><label>資料の日付まで<input id="dateTo" type="date"></label><label>並び順<select id="sortOrder"><option value="newest">日付が新しい順</option><option value="oldest">日付が古い順</option><option value="title">タイトル順</option></select></label><button class="secondary" id="clearOrganization">日付をリセット</button></div>
     <div id="records"></div>
     <div class="empty" id="empty"><span>✳</span><h3>最初のひらめきを、ここに。</h3><p>ファイルをドロップするか、短いメモから始めましょう。</p></div>
   </section>
@@ -45,16 +45,22 @@
 <dialog id="githubDialog"><form id="githubForm"><div class="dialog-header"><span class="eyebrow">IMPORT YOUR SAVED IDEA</span><button id="closeGithub" class="iconbutton" type="button" aria-label="閉じる">×</button></div><h2>ChatGPTがGitHubへ保存した資料</h2><p class="hint">GitHubでMarkdown資料を開き、そのページのリンクを貼り付けてください。日付・タイトル・本文と元ファイルを取り込みます。Markdownの相対リンクで指定された画像も一緒に取り込みます。説明だけの場合は画像を追加しません。</p><label>GitHub資料のリンク<input name="url" type="url" required maxlength="2048" placeholder="https://github.com/Yuji5124/idea-vault/blob/main/ideas/…md"></label><p class="hint">mainのideas内にある2MB以内の公開Markdown資料に対応。同じリンクは重複保存せず、既存の編集も上書きしません。非公開資料はダウンロードしてドロップしてください。</p><p id="githubStatus" class="hint" role="status" aria-live="polite"></p><div class="dialog-actions"><button class="primary" type="submit">保管庫に取り込む</button></div></form></dialog>
 <dialog id="detail"><form id="editForm">
   <div class="dialog-header"><span class="eyebrow">YOUR IDEA, IN DETAIL</span><button type="button" class="iconbutton" id="closeDetail" aria-label="閉じる">×</button></div>
-  <div id="detailPreview" class="detail-preview"></div>
+  <div id="detailPreview" class="detail-preview"></div><div id="imageDrop" class="dropzone" tabindex="0">画像をここへドロップして追加</div><label>画像追加<input id="addImages" type="file" accept="image/png,image/jpeg,image/webp" multiple></label><div id="imageActions"></div><button type="button" id="showHistory">更新履歴</button>
   <label>タイトル<input name="title" required maxlength="200"></label><label>資料の日付<input name="record_date" type="date" required></label>
   <div class="form-row"><label>分類<select name="type"><option>SOURCE</option><option>PRINCIPLE</option><option>IDEA</option><option>VISUAL</option></select></label><label>カテゴリー<input name="category" placeholder="ゲーム、自然、UI…"></label></div>
+  <label>1行概要<input name="summary" maxlength="500"></label>
+  <div class="form-row"><label>制作・検証状態<select name="status"><option>未指定</option><option>未着手</option><option>検討中</option><option>試作中</option><option>検証中</option><option>保留</option><option>未完成</option><option>失敗</option><option>完成</option></select></label><label>案の区分<select name="variant"><option value="">未指定</option><option>原案</option><option>改善案</option><option>派生案</option><option>別作品</option></select></label></div>
+  <details><summary>体験・原理・発展案を編集</summary><label>体験・遊び方<textarea name="experience"></textarea></label><label>仕組み・原理<textarea name="principle"></textarea></label><label>面白さの核<textarea name="appeal"></textarea></label><label>発展案<textarea name="development"></textarea></label><label>制作・検証状況<textarea name="production"></textarea></label></details>
   <label>TAG <small>カンマ区切り</small><input name="tags" placeholder="蜘蛛, 痕跡, 探索"></label>
   <label>メモ / PRINCIPLE<textarea name="body" rows="4" placeholder="見つけた構造、思いついたことを自由に。"></textarea></label>
   <label>SOURCE / PRINCIPLE / IDEA / VISUAL の関連</label><div id="relations" class="relations"></div>
   <div class="jima"><label>JIMA FILTER<select name="jima_filter"><option>未評価</option><option>GOOD</option><option>HOLD</option><option>BAD</option></select></label><label>ひとことコメント<textarea name="comment" rows="2" placeholder="ルールが一文で説明できる。"></textarea></label></div>
   <label class="checkbox"><input name="inbox" type="checkbox">INBOXに置く（外すと分類先へ整理）</label>
   <div id="dates" class="dates"></div><details><summary>ファイルの分離・統合</summary><p class="hint">選んだファイルを別の記録へ移します。元のメモと評価は残ります。</p><div id="transferFiles"></div><label>移動先<select id="transferTarget"></select></label><div class="transfer-actions"><button type="button" class="secondary" id="moveFiles">選択ファイルを移動</button><button type="button" class="secondary" id="splitFiles">新しいIDEAへ分離</button></div><p class="hint">すべて選択して移動するとファイルを統合できます。</p></details>
-  <div class="dialog-actions"><span id="saveStatus" role="status"></span><button class="primary" type="submit">変更を保存</button></div>
+  <div class="dialog-actions"><button id="trashIdea" type="button" class="secondary">ゴミ箱へ</button><button id="restoreIdea" type="button" class="secondary">復元</button><button id="purgeIdea" type="button" class="secondary">完全削除</button><span id="saveStatus" role="status"></span><button class="primary" type="submit">変更を保存</button></div>
 </form></dialog>
 <dialog id="noteDialog"><form id="noteForm"><div class="dialog-header"><span class="eyebrow">CAPTURE A THOUGHT</span><button type="button" class="iconbutton" id="closeNote" aria-label="閉じる">×</button></div><h2>ひらめきを残す</h2><label>タイトル<input name="title" required maxlength="200" placeholder="名前は、あとから変えられます。"></label><label>資料の日付<input name="record_date" type="date"></label><label>分類<select name="type"><option>IDEA</option><option>SOURCE</option><option>PRINCIPLE</option><option>VISUAL</option></select></label><label>メモ<textarea name="body" rows="6" placeholder="一行だけでも大丈夫。"></textarea></label><div class="dialog-actions"><button class="primary" type="submit">INBOXに保存</button></div></form></dialog>
+<dialog id="imageViewer"><button id="closeImageViewer" type="button">閉じる</button><img id="largeImage" alt="原画の拡大表示"></dialog><dialog id="historyDialog"><button id="closeHistory" type="button">閉じる</button><h2>更新前の説明・画像</h2><div id="historyEntries"></div></dialog>
+<dialog id="editReview"><h2>説明の更新を確認</h2><div class="review-columns"><div><h3>更新前</h3><pre id="beforeEdit"></pre></div><div><h3>更新後</h3><pre id="afterEdit"></pre></div></div><button id="cancelEdit" type="button">戻る</button><button id="approveEdit" type="button">確認して保存</button></dialog>
+<dialog id="importDialog"><button id="closeImport" type="button">閉じる</button><h2>ChatGPT履歴インポート</h2><p class="hint">会話・資料単位で候補を表示します。途中の発想も残し、AIで選別しません。画像本体がない参照は未取得として表示します。日時不明・既存更新は初期選択を保留にします。</p><p class="hint">変更前に「バックアップ取得」で保管庫を保存してください。取り込みはプレビュー確認後に確定します。</p><label>ZIP・JSON・HTML・Markdown・画像<input id="historyFiles" type="file" multiple accept=".zip,.json,.html,.htm,.md,.markdown,.txt,.png,.jpg,.jpeg,.webp"></label><label>フォルダ<input id="historyFolder" type="file" webkitdirectory multiple></label><div class="form-row"><label>開始日（日本時間）<input id="importFrom" type="date" value="2026-09-11"></label><label>終了日（日本時間）<input id="importTo" type="date" value="2026-10-11"></label></div><button id="previewImport" type="button">候補をプレビュー</button><div id="importCandidates"></div><label class="checkbox"><input id="confirmImport" type="checkbox">内容と新規・更新・保留の指定を確認しました</label><button id="commitImport" type="button" disabled>確認した候補を取り込む</button><p id="importResults" role="status"></p></dialog>
 </body></html>

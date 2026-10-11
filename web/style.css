@@ -2,3 +2,6 @@
 :root .searchbox input{border:0;background:none;padding:12px 0;margin:0;border-radius:0}
 
 .header-actions{flex-wrap:wrap;justify-content:flex-end}.organize-filters{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin:-8px 0 20px}.organize-filters label{margin:0;flex:1;min-width:130px}.organize-filters label input,.organize-filters label select{font-size:11px;margin-top:5px}.organize-filters button{margin-bottom:0}#githubDialog h2{font-size:21px}@media(max-width:650px){.header-actions{max-width:150px}.organize-filters{gap:8px}.organize-filters label{min-width:110px}}
+.review-columns{display:grid;grid-template-columns:1fr 1fr;gap:16px}.review-columns pre,.import-candidate pre,#historyEntries pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow:auto;background:#f1f2ec;padding:12px}.image-action{display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap}.image-action span{flex:1}.import-candidate{padding:14px 0;border-bottom:1px solid #d8ded0}.import-image{width:150px;max-height:150px;object-fit:contain;margin:8px}#imageDrop{min-height:70px;padding:12px}#importDialog{max-width:950px;width:90vw}@media(max-width:700px){.review-columns{grid-template-columns:1fr}}
+
+#imageViewer{max-width:95vw}#largeImage{display:block;max-width:90vw;max-height:85vh;object-fit:contain}
