@@ -75,10 +75,18 @@ class SupabaseDouble(BaseHTTPRequestHandler):
             elif self.command == 'POST':
                 self.server.rows[data['id']] = copy.deepcopy(data['metadata'])
                 self.reply(201, [data])
+            elif self.command == 'DELETE':
+                identifier = parse_qs(urlsplit(self.path).query)['id'][0][3:]
+                self.server.rows.pop(identifier, None)
+                self.reply(200, {})
             elif self.command == 'PATCH':
                 identifier = parse_qs(urlsplit(self.path).query)['id'][0][3:]
                 self.server.rows[identifier] = copy.deepcopy(data['metadata'])
                 self.reply(200, [data])
+        elif path == '/storage/v1/object/idea-vault' and self.command == 'DELETE':
+            for prefix in data['prefixes']:
+                self.server.objects.pop(prefix, None)
+            self.reply(200, {})
         elif path.startswith('/storage/v1/object/idea-vault/') and self.command == 'POST':
             name = unquote(path.split('/idea-vault/', 1)[1])
             if not re.fullmatch(r"[A-Za-z0-9_/!.*'() &$=@;:+,?-]*", name):

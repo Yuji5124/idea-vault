@@ -19,7 +19,7 @@ const assert=require('node:assert/strict');
     assert.equal(await page.locator('#editForm [name=record_date]').inputValue(),'2026-10-10');assert.equal(await page.locator('#detailPreview img').count(),0);
     const downloadEvent=page.waitForEvent('download');await page.locator('.file-link').click();const download=await downloadEvent;
     const fs=require('node:fs/promises');assert.match(await fs.readFile(await download.path(),'utf8'),/画像ファイルは未添付/);
-    await page.locator('#editForm [name=title]').fill('B edited');await page.locator('#editForm [name=record_date]').fill('2026-10-11');await page.locator('#editForm [name=category]').fill('ゲーム');await page.locator('#editForm [type=submit]').click();await page.waitForFunction(()=>!document.querySelector('#detail').open);
+    await page.locator('#editForm [name=title]').fill('B edited');await page.locator('#editForm [name=record_date]').fill('2026-10-11');await page.locator('#editForm [name=category]').fill('ゲーム');await page.locator('#editForm [type=submit]').click();await page.locator('#approveEdit').click();await page.waitForFunction(()=>!document.querySelector('#detail').open);
     await githubImport();assert.equal(await page.locator('.card').count(),1);assert.equal(await page.locator('.card h3').textContent(),'B edited');assert.match(await page.locator('#toast').textContent(),/取り込み済み/);
     console.log('PASS: GitHub import, original Markdown download, metadata edit, no imaginary images, duplicate import preserves edits');
     await page.locator('#dropzone').evaluate(zone=>{const dt=new DataTransfer();dt.items.add(new File(['# A earlier\n\n保存日：2026年10月9日\n\nDropped body'],'2026-10-09_drop.md',{type:'text/markdown'}));zone.dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:dt}));});

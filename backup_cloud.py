@@ -32,7 +32,8 @@ def main():
             raise ValueError('不正な保存先の記録があります')
         folder = root / folder.parent / (folder.name + '_' + record['id'][:8])
         folder.mkdir(parents=True)
-        for file in record['files']:
+        from record_management import retained_files
+        for file in retained_files(record):
             path = (folder / file['path']).resolve()
             if not path.is_relative_to(folder):
                 raise ValueError('不正なファイルパスがあります')

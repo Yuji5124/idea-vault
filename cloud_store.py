@@ -87,7 +87,7 @@ class CloudVault:
             if not rows:
                 raise CloudError('記録を更新できませんでした。')
 
-    def create(self, title, files=(), kind='IDEA', inbox=True, body='', record_date=None, source_url=None, identifier=None):
+    def create(self, title, files=(), kind='IDEA', inbox=True, body='', record_date=None, source_url=None, identifier=None, extra_metadata=None):
         from server import stamp, dated, KINDS
         if kind not in KINDS or not isinstance(title, str) or not title.strip() or not isinstance(body, str):
             raise CloudError('タイトル・分類・本文を確認してください。')
@@ -103,6 +103,8 @@ class CloudVault:
         record['record_date'] = document_date or now[:10]
         if source_url is not None:
             record['source_url'] = source_url
+        if extra_metadata:
+            record.update(extra_metadata)
         used = set()
         try:
             from pathlib import Path
@@ -131,6 +133,10 @@ class CloudVault:
                         'mime': mime, 'size': len(raw), 'created_at': created,
                         'text': raw[:200000].decode('utf-8', errors='replace') if Path(item['name']).suffix.lower() in {'.txt', '.md', '.markdown', '.html', '.htm', '.csv', '.json'} else ''}
                 self.upload(record, file, raw)
+                if item.get('thumbnail'):
+                    from record_management import thumbnail_descriptor
+                    thumb,thumb_raw=thumbnail_descriptor(item['thumbnail'])
+                    self.upload(record,thumb,thumb_raw);file['thumbnail']=thumb
                 record['files'].append(file)
             if record['files']:
                 record['created_at'] = min(f['created_at'] for f in record['files'])
@@ -162,7 +168,11 @@ class CloudVault:
             ids = {r['id'] for r in self.records()} - {identifier}
             if not isinstance(changes['relations'], list) or not all(isinstance(r, str) and r in ids for r in changes['relations']):
                 raise CloudError('関連先を確認してください。')
-        for field in ('title', 'type', 'category', 'body', 'comment', 'tags', 'inbox', 'relations', 'jima_filter', 'record_date'):
+        from record_management import validate_changes, revision
+        validate_changes(changes)
+        if record.get('deleted_at'): raise ValueError('ゴミ箱の記録は先に復元してください。')
+        revision(record)
+        for field in ('title', 'type', 'category', 'body', 'comment', 'tags', 'inbox', 'relations', 'jima_filter', 'record_date', 'summary', 'status', 'experience', 'principle', 'appeal', 'development', 'production', 'variant'):
             if field in changes:
                 record[field] = changes[field]
         record['updated_at'] = stamp()
@@ -177,6 +187,9 @@ class CloudVault:
         if source_id == target_id:
             raise CloudError('別の記録を選択してください。')
         source, target = self.get(source_id), self.get(target_id)
+        if source.get('deleted_at') or target.get('deleted_at'): raise ValueError('ゴミ箱の記録は先に復元してください。')
+        from record_management import revision
+        revision(source,'添付の移動');revision(target,'添付の受け入れ')
         selected = [f for f in source['files'] if f['id'] in file_ids]
         if not selected:
             raise CloudError('ファイルを選択してください。')
@@ -192,10 +205,13 @@ class CloudVault:
             used.add(name)
             copy = {**file, 'name': name, 'path': file['path'].split('/')[0] + '/' + name}
             self.upload(target, copy, self.read_file(source, file))
+            if file.get('thumbnail'):
+                self.upload(target,file['thumbnail'],self.read_file(source,file['thumbnail']))
             target['files'].append(copy)
         target['relations'] = sorted(set(target['relations'] + [source_id]))
         target['updated_at'] = stamp()
         self.save(target)
+        source.setdefault('archived_files',[]).extend(selected)
         source['files'] = [f for f in source['files'] if f['id'] not in file_ids]
         source['relations'] = sorted(set(source['relations'] + [target_id]))
         source['updated_at'] = stamp()
