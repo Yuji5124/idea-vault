@@ -47,6 +47,19 @@ class ManagementTests(unittest.TestCase):
         with urlopen(Request(self.base+path,data=json.dumps(payload).encode() if payload is not None else None,headers=headers)) as response:
             raw=response.read();return raw if response.headers['Content-Type'].startswith('application/zip') else json.loads(raw)
     def create(self):return self.call('/api/create',{'title':'原案','body':'失敗も残す'})
+    def test_text_only_import_skips_present_images_and_is_idempotent(self):
+        payload={'text_only':True,'from':'2026-09-11','to':'2026-10-11','files':[zipped({'conversations.json':json.dumps(export_data()).encode(),'file-image.png':PNG,'unrelated.png':PNG})]}
+        candidate=self.call('/api/history-preview',payload)['candidates'][0]
+        self.assertEqual(len(self.call('/api/history-preview',payload)['candidates']),1)
+        self.assertEqual(candidate['files'],[])
+        self.assertTrue(candidate['missing_images'])
+        request={**payload,'confirmed':True,'selections':[{'key':candidate['key'],'action':'new'}]}
+        result=self.call('/api/history-commit',request)
+        self.assertEqual(result['new'],1);self.assertEqual(result['images'],0)
+        record=next(iter(self.provider.rows.values()))
+        self.assertIn('完成前の案',record['body']);self.assertEqual(record['files'],[])
+        self.assertEqual(self.call('/api/history-commit',request)['duplicates'],1)
+
     def test_edit_history_retains_before_and_optimistic_conflict(self):
         r=self.create();updated=self.call('/api/update',{'id':r['id'],'expected_updated_at':r['updated_at'],'changes':{'body':'改善案','summary':'ひとこと','status':'失敗','principle':'原理','variant':'改善案'}})
         self.assertEqual(updated['history'][0]['body'],'失敗も残す');self.assertEqual(updated['status'],'失敗')

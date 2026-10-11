@@ -148,3 +148,7 @@ mainは変更せず、Render Free・RLS・非公開Storageを維持していま�
 - 既存cloud-browser、recovery-browser、document-browser、github-sync-browserもすべて再実行して成功。説明保存の確認画面に合わせて既存ブラウザテストを更新。
 
 実Supabase、実ChatGPT履歴、実Windows Chrome／iPad Safari、新版のRender本番反映は未検証。対象期間の個人データは未提供で、実登録0件／更新0件／保存画像0枚。未取得画像・重複・保留件数は未集計。試験データの保存を本人データの保存完了として報告しません。
+
+## 文章のみの過去履歴取り込み（2026-10-11）
+- Python全80件成功。画像付き公式形式ZIPでも文章のみ登録・未取得参照保持・画像のみ候補除外・再取り込み重複防止を確認。
+- JavaScript構文・git diff検証成功。既存ブラウザテストは画像モードを明示するよう調整。この変更のブラウザ再実行、実Supabaseへの保存、公開Renderへのデプロイは未実施。

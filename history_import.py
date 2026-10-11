@@ -108,6 +108,10 @@ def parse(payload):
                 if not matches and re.fullmatch(r'file[-_][a-zA-Z0-9-]+',local):matches=[n for n in assets if PurePosixPath(n).stem==local or PurePosixPath(n).name.startswith(local+'-')]
             if len(matches)!=1:missing.append(ref);continue
             name=matches[0]
+            used.add(name)
+            if payload.get('text_only') is True:
+                missing.append(ref)
+                continue
             item={'name':PurePosixPath(name).name,'relativePath':name,'data':base64.b64encode(assets[name]).decode()}
             image_data(item)
             thumb=payload.get('thumbnails',{}).get(sha(assets[name]))
@@ -177,6 +181,7 @@ def parse(payload):
             date=day('-'.join(match.groups())) if match else None
             candidate('file:'+name,PurePosixPath(name).stem,text,date,refs,None,name)
     for name,raw in assets.items():
+        if payload.get('text_only') is True:continue
         if name in used or PurePosixPath(name).suffix.lower() not in ('.png','.jpg','.jpeg','.webp'):continue
         match=re.search(r'(\d{4})[-年](\d{1,2})[-月](\d{1,2})',name)
         date=day('-'.join(match.groups())) if match else None
