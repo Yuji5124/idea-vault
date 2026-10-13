@@ -45,6 +45,12 @@
 <dialog id="githubDialog"><form id="githubForm"><div class="dialog-header"><span class="eyebrow">IMPORT YOUR SAVED IDEA</span><button id="closeGithub" class="iconbutton" type="button" aria-label="閉じる">×</button></div><h2>ChatGPTがGitHubへ保存した資料</h2><p class="hint">GitHubでMarkdown資料を開き、そのページのリンクを貼り付けてください。日付・タイトル・本文と元ファイルを取り込みます。Markdownの相対リンクで指定された画像も一緒に取り込みます。説明だけの場合は画像を追加しません。</p><label>GitHub資料のリンク<input name="url" type="url" required maxlength="2048" placeholder="https://github.com/Yuji5124/idea-vault/blob/main/ideas/…md"></label><p class="hint">mainのideas内にある2MB以内の公開Markdown資料に対応。同じリンクは重複保存せず、既存の編集も上書きしません。非公開資料はダウンロードしてドロップしてください。</p><p id="githubStatus" class="hint" role="status" aria-live="polite"></p><div class="dialog-actions"><button class="primary" type="submit">保管庫に取り込む</button></div></form></dialog>
 <dialog id="detail"><form id="editForm">
   <div class="dialog-header"><span class="eyebrow">YOUR IDEA, IN DETAIL</span><button type="button" class="iconbutton" id="closeDetail" aria-label="閉じる">×</button></div>
+  <section id="mutopiaPublishing" class="mutopia-publishing" hidden>
+    <div class="mutopia-publishing-heading"><span class="mutopia-publishing-mark" aria-hidden="true">↗</span><div><h3>MUTOPIAに公開</h3><p>この記録を公開展示に掲載します</p></div></div>
+    <p class="hint">公開される内容：タイトル・分類・カテゴリー・タグ・メモ本文・先頭の画像1枚。評価、コメント、その他の添付ファイルは公開されません。</p>
+    <button id="toggleMutopiaPublish" class="primary" type="button">この記録をMUTOPIAに公開する</button>
+    <span id="mutopiaPublishStatus" class="hint" role="status" aria-live="polite"></span>
+  </section>
   <div id="detailPreview" class="detail-preview"></div>
   <label>タイトル<input name="title" required maxlength="200"></label><label>資料の日付<input name="record_date" type="date" required></label>
   <div class="form-row"><label>分類<select name="type"><option>SOURCE</option><option>PRINCIPLE</option><option>IDEA</option><option>VISUAL</option></select></label><label>カテゴリー<input name="category" placeholder="ゲーム、自然、UI…"></label></div>
@@ -53,13 +59,7 @@
   <label>SOURCE / PRINCIPLE / IDEA / VISUAL の関連</label><div id="relations" class="relations"></div>
   <div class="jima"><label>JIMA FILTER<select name="jima_filter"><option>未評価</option><option>GOOD</option><option>HOLD</option><option>BAD</option></select></label><label>ひとことコメント<textarea name="comment" rows="2" placeholder="ルールが一文で説明できる。"></textarea></label></div>
   <label class="checkbox"><input name="inbox" type="checkbox">INBOXに置く（外すと分類先へ整理）</label>
-  <section id="mutopiaPublishing" class="mutopia-publishing" hidden>
-    <h3>MUTOPIA 公開展示</h3>
-    <p class="hint">公開すると、タイトル・分類・カテゴリー・タグ・メモ本文と先頭の画像1枚が誰でも見られるようになります。評価、コメント、他の添付ファイル、ログイン情報は公開しません。公開を解除すると展示から外し、複製画像を削除します。</p>
-    <button id="toggleMutopiaPublish" class="secondary" type="button">MUTOPIAへ公開</button>
-    <span id="mutopiaPublishStatus" class="hint" role="status" aria-live="polite"></span>
-  </section>
-  <div id="dates" class="dates"></div><details><summary>ファイルの分離・統合</summary><p class="hint">選んだファイルを別の記録へ移します。元のメモと評価は残ります。</p><div id="transferFiles"></div><label>移動先<select id="transferTarget"></select></label><div class="transfer-actions"><button type="button" class="secondary" id="moveFiles">選択ファイルを移動</button><button type="button" class="secondary" id="splitFiles">新しいIDEAへ分離</button></div><p class="hint">すべて選択して移動するとファイルを統合できます。</p></details>
+  <div id="dates" class="dates"></div><details><summary>添付ファイルの移動・統合</summary><p class="hint">これはMUTOPIA公開とは別の操作です。選んだファイルを別の記録へ移します。元のメモと評価は残ります。</p><div id="transferFiles"></div><label>移動先<select id="transferTarget"></select></label><div class="transfer-actions"><button type="button" class="secondary" id="moveFiles">選択ファイルを移動</button><button type="button" class="secondary" id="splitFiles">新しいIDEAへ分離</button></div><p class="hint">すべて選択して移動するとファイルを統合できます。</p></details>
   <div class="dialog-actions"><span id="saveStatus" role="status"></span><button class="primary" type="submit">変更を保存</button></div>
 </form></dialog>
 <dialog id="noteDialog"><form id="noteForm"><div class="dialog-header"><span class="eyebrow">CAPTURE A THOUGHT</span><button type="button" class="iconbutton" id="closeNote" aria-label="閉じる">×</button></div><h2>ひらめきを残す</h2><label>タイトル<input name="title" required maxlength="200" placeholder="名前は、あとから変えられます。"></label><label>資料の日付<input name="record_date" type="date"></label><label>分類<select name="type"><option>IDEA</option><option>SOURCE</option><option>PRINCIPLE</option><option>VISUAL</option></select></label><label>メモ<textarea name="body" rows="6" placeholder="一行だけでも大丈夫。"></textarea></label><div class="dialog-actions"><button class="primary" type="submit">INBOXに保存</button></div></form></dialog>
