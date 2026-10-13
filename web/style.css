@@ -3,3 +3,10 @@
 
 .header-actions{flex-wrap:wrap;justify-content:flex-end}.organize-filters{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin:-8px 0 20px}.organize-filters label{margin:0;flex:1;min-width:130px}.organize-filters label input,.organize-filters label select{font-size:11px;margin-top:5px}.organize-filters button{margin-bottom:0}#githubDialog h2{font-size:21px}@media(max-width:650px){.header-actions{max-width:150px}.organize-filters{gap:8px}.organize-filters label{min-width:110px}}
 .mutopia-publishing{border:1px solid #9bad73;border-left:4px solid var(--green);border-radius:9px;padding:15px 16px;margin:0 0 18px;background:#eef3e4}.mutopia-publishing-heading{display:flex;align-items:center;gap:10px}.mutopia-publishing-mark{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:var(--green);color:white;font-size:18px}.mutopia-publishing h3{font-size:14px;letter-spacing:.3px;margin:0 0 2px;color:#30462f}.mutopia-publishing-heading p{font-size:11px;margin:0;color:#64745a}.mutopia-publishing .hint{display:block;margin:9px 0;color:#5e6c54}.mutopia-publishing button{margin-top:4px;min-height:42px;padding:10px 16px}.mutopia-publishing [role=status]{margin-bottom:0}
+
+/* Keep the archive's four-column landscape card layout on desktop. */
+.grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+.thumbnail{aspect-ratio:3/2;height:auto}
+.thumbnail img{object-fit:contain}
+@media(max-width:1000px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:650px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
