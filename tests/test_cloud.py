@@ -33,6 +33,26 @@ class SupabaseDouble(BaseHTTPRequestHandler):
         raw = self.rfile.read(size) if size else b''
         data = json.loads(raw) if self.headers.get('Content-Type', '').startswith('application/json') and raw else None
         token = self.headers.get('Authorization')
+        if path == '/rest/v1/mutopia_public_records' and token == 'Bearer test-publishable' and self.command == 'GET':
+            query = parse_qs(urlsplit(self.path).query)
+            rows = list(self.server.mutopia_rows.values())
+            if 'id' in query:
+                rows = [row for row in rows if row['id'] == query['id'][0][3:]]
+            if 'owner_id' in query:
+                rows = [row for row in rows if row['owner_id'] == query['owner_id'][0][3:]]
+            limit = int(query.get('limit', ['500'])[0])
+            fields = query.get('select', ['*'])[0].split(',')
+            self.reply(200, [{key: value for key, value in row.items() if key in fields} for row in rows[:limit]])
+            return
+        public_image_prefix = '/storage/v1/object/public/mutopia-public/'
+        if path.startswith(public_image_prefix) and self.command == 'GET':
+            key = unquote(path[len(public_image_prefix):])
+            contents = self.server.public_objects.get(key)
+            if contents is None:
+                self.reply(404, {})
+            else:
+                self.reply(200, contents, mime='image/webp' if key.endswith('.webp') else 'image/png')
+            return
         if path == '/auth/v1/token':
             accepted = data.get('refresh_token') == 'owner-refresh' or (data.get('email') == 'owner@example.test' and data.get('password') == getattr(self.server, 'password', 'test-password'))
             if not accepted:
@@ -79,6 +99,40 @@ class SupabaseDouble(BaseHTTPRequestHandler):
                 identifier = parse_qs(urlsplit(self.path).query)['id'][0][3:]
                 self.server.rows[identifier] = copy.deepcopy(data['metadata'])
                 self.reply(200, [data])
+        elif path == '/rest/v1/mutopia_public_records':
+            query = parse_qs(urlsplit(self.path).query)
+            if self.command == 'GET':
+                rows = list(self.server.mutopia_rows.values())
+                if 'id' in query:
+                    rows = [row for row in rows if row['id'] == query['id'][0][3:]]
+                if 'owner_id' in query:
+                    rows = [row for row in rows if row['owner_id'] == query['owner_id'][0][3:]]
+                fields = query.get('select', ['*'])[0].split(',')
+                self.reply(200, [{key: value for key, value in row.items() if key in fields} for row in rows])
+            elif self.command == 'POST':
+                if data.get('owner_id') != OWNER:
+                    self.reply(403, {})
+                    return
+                self.server.mutopia_rows[data['id']] = copy.deepcopy(data)
+                self.reply(201, [data])
+            elif self.command == 'DELETE':
+                identifier = query.get('id', [''])[0][3:]
+                row = self.server.mutopia_rows.get(identifier)
+                if row and row['owner_id'] == query.get('owner_id', [''])[0][3:]:
+                    del self.server.mutopia_rows[identifier]
+                self.reply(200, [])
+        elif path.startswith('/storage/v1/object/mutopia-public/') and self.command == 'POST':
+            key = unquote(path.split('/mutopia-public/', 1)[1])
+            if not key.startswith(OWNER + '/'):
+                self.reply(403, {})
+                return
+            self.server.public_objects[key] = raw
+            self.reply(200, {})
+        elif path == '/storage/v1/object/mutopia-public' and self.command == 'DELETE':
+            for key in data.get('prefixes', []):
+                if key.startswith(OWNER + '/'):
+                    self.server.public_objects.pop(key, None)
+            self.reply(200, {})
         elif path.startswith('/storage/v1/object/idea-vault/') and self.command == 'POST':
             name = unquote(path.split('/idea-vault/', 1)[1])
             if not re.fullmatch(r"[A-Za-z0-9_/!.*'() &$=@;:+,?-]*", name):
@@ -109,6 +163,7 @@ class SupabaseDouble(BaseHTTPRequestHandler):
 def start_fixture(port=0):
     provider = ThreadingHTTPServer(('127.0.0.1', 0), SupabaseDouble)
     provider.rows, provider.objects = {}, {}
+    provider.mutopia_rows, provider.public_objects = {}, {}
     provider.password_updates, provider.used_hashes = [], set()
     app = ThreadingHTTPServer(('127.0.0.1', port), Handler)
     app.cloud_config = (f'http://127.0.0.1:{provider.server_port}', 'test-publishable', OWNER)
@@ -197,6 +252,47 @@ class CloudTests(unittest.TestCase):
         self.call('/api/create', {'title': 'SECRET-TITLE'})
         self.assertNotIn(b'SECRET-TITLE', self.call('/', token=None))
         self.assertEqual(self.call('/api/config', token=None), {'storage': 'cloud'})
+
+    def test_mutopia_public_feed_is_anonymous_but_private_routes_stay_protected(self):
+        from cloud_store import CloudVault
+        public_record = {
+            'id': 'published-id', 'title': '公開作品', 'type': 'VISUAL',
+            'category': '生命', 'tags': ['膜'], 'body': '公開用の説明',
+            'relations': [], 'created_at': '2026-10-14T00:00:00Z',
+            'image_url': 'https://example.supabase.co/storage/v1/object/public/mutopia-public/owner/published-id/image.webp',
+        }
+        with patch.object(CloudVault, 'public_mutopia_records', return_value=[public_record]) as public_feed:
+            response = urlopen(Request(self.base + '/api/mutopia/public-records'))
+            with response:
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.headers['Cache-Control'], 'no-store')
+                self.assertEqual(json.load(response), {'records': [public_record]})
+        public_feed.assert_called_once_with(self.app.cloud_config[0], self.app.cloud_config[1])
+        for path in ('/api/records', '/api/mutopia/publications'):
+            with self.subTest(path=path), self.assertRaises(HTTPError) as error:
+                urlopen(self.base + path)
+            self.assertEqual(error.exception.code, 401)
+
+    def test_mutopia_public_feed_reports_missing_configuration(self):
+        self.app.cloud_config = None
+        with self.assertRaises(HTTPError) as error:
+            urlopen(self.base + '/api/mutopia/public-records')
+        self.assertEqual(error.exception.code, 503)
+        self.assertEqual(json.loads(error.exception.read()), {'code': 'MUTOPIA_PUBLICATION_UNAVAILABLE'})
+
+    def test_mutopia_publication_actions_require_owner_session(self):
+        from cloud_store import CloudVault
+        with patch.object(CloudVault, 'publish_to_mutopia', return_value={'id': 'owned', 'published': True}) as publish:
+            result = self.call('/api/mutopia/publish', {'record_id': 'owned', 'published': True})
+        self.assertEqual(result, {'id': 'owned', 'published': True})
+        publish.assert_called_once()
+        with patch.object(CloudVault, 'unpublish_from_mutopia', return_value={'id': 'owned', 'published': False}) as unpublish:
+            result = self.call('/api/mutopia/publish', {'record_id': 'owned', 'published': False})
+        self.assertEqual(result, {'id': 'owned', 'published': False})
+        unpublish.assert_called_once()
+        with self.assertRaises(HTTPError) as error:
+            self.call('/api/mutopia/publish', {'record_id': 'owned', 'published': True}, token=None)
+        self.assertEqual(error.exception.code, 401)
 
     def test_backup_download_is_restorable_by_local_vault(self):
         import backup_cloud

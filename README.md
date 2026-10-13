@@ -188,6 +188,8 @@ IDEA VAULTの記録は既定で非公開です。MUTOPIAの詳細画面で利用
 
 IDEA VAULTのクラウド版RenderサービスとMUTOPIAのRenderサービスは、変更コードをそれぞれ手動デプロイしてください。MUTOPIAでは既定の `IDEA_VAULT_URL`（`https://idea-vault-cmgl.onrender.com`）を使い、秘密鍵やservice-roleキーの追加は不要です。未ログインのMUTOPIAは公開済みデータだけを表示し、本人ログイン後は従来どおり本人の全記録を本人だけに表示します。
 
+公開フィードは匿名の `GET /api/mutopia/public-records`（`Cache-Control: no-store`）です。レスポンスは `{ "records": [{ "id", "title", "type", "category", "tags", "body", "relations", "created_at", "image_url" }] }`。関連IDは現在公開されている記録だけに制限され、`image_url` は公開専用バケットから生成します。公開一覧・画像はCORSを有効にせずIDEA VAULTの同一オリジンで配信します。公開一覧取得にはサーバー設定済みのSupabase publishable/anonキーだけを使い、本人JWTやservice-roleキーは使用しません。公開操作・公開解除・本人向け公開一覧は既存の所有者認証が必要です。未設定時は公開APIが503を返し、空の成功レスポンスとは区別されます。
+
 ## 今後の拡張
 
 基本機能はAIなしで動きます。次の段階で、任意のAI分類、画像／PDFのOCR、全文索引、JIMA FILTER履歴・選択傾向の分析、PRINCIPLE LOOP / PIXVAULT / SOUNDVAULT / NEXUSとのJSON連携を追加できます。現時点ではファイル名によるタイトル候補とMIME判定のみを行い、AI解析は実装していません。クラウド版は後述のGitHub取り込みに対応します。

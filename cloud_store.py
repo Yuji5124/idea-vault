@@ -42,8 +42,8 @@ class CloudVault:
         self.url, self.public_key, self.token, self.owner = url, public_key, token, owner
         self.lock = lock or threading.RLock()
 
-    def call(self, path, method='GET', payload=None, raw=None, mime=None, binary=False):
-        return request(self.url, self.public_key, self.token, path, method, payload, raw, mime, binary)
+    def call(self, path, method='GET', payload=None, raw=None, mime=None, binary=False, prefer=None, extra_headers=None):
+        return request(self.url, self.public_key, self.token, path, method, payload, raw, mime, binary, prefer, extra_headers)
 
     def verify(self):
         user = self.call('/auth/v1/user')
