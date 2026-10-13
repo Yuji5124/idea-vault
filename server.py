@@ -302,6 +302,18 @@ class Handler(BaseHTTPRequestHandler):
             name = public_files[parsed.path]
             self.send(200, (WEB / name).read_bytes(), mimetypes.guess_type(name)[0] + '; charset=utf-8')
             return
+        if parsed.path == '/api/mutopia/public-records':
+            config = self.cloud_config()
+            if not config:
+                self.send(503, {'code': 'MUTOPIA_PUBLICATION_UNAVAILABLE'})
+                return
+            try:
+                from cloud_store import CloudVault
+                records = CloudVault.public_mutopia_records(config[0], config[1])
+                self.send(200, {'records': records})
+            except Exception:
+                self.send(503, {'error': 'MUTOPIA公開データを読み込めません。公開テーブルの設定を確認してください。'})
+            return
         if not self.authenticated():
             return
         try:
@@ -310,6 +322,11 @@ class Handler(BaseHTTPRequestHandler):
                 with vault.lock:
                     records = vault.records()
                 self.send(200, {'records': records})
+            elif parsed.path == '/api/mutopia/publications':
+                if not self.cloud_config():
+                    self.send(503, {'error': 'MUTOPIA公開にはクラウド版IDEA VAULTが必要です。'})
+                    return
+                self.send(200, {'ids': [row['id'] for row in self.remote_vault.mutopia_publications()]})
             elif parsed.path.startswith('/api/file/'):
                 parts = unquote(parsed.path).split('/')
                 if len(parts) != 5:
@@ -474,6 +491,17 @@ class Handler(BaseHTTPRequestHandler):
                     self.send(200, vault.update(payload['id'], payload['changes']))
                 elif self.path == '/api/transfer':
                     self.send(200, vault.transfer(payload['source'], payload['target'], payload['files']))
+                elif self.path == '/api/mutopia/publish':
+                    if not self.cloud_config():
+                        self.send(503, {'error': 'MUTOPIA公開にはクラウド版IDEA VAULTが必要です。'})
+                    elif not isinstance(payload.get('record_id'), str) or len(payload['record_id']) > 128:
+                        self.send(400, {'error': '公開する記録を確認してください。'})
+                    elif payload.get('published') is True:
+                        self.send(200, vault.publish_to_mutopia(payload['record_id']))
+                    elif payload.get('published') is False:
+                        self.send(200, vault.unpublish_from_mutopia(payload['record_id']))
+                    else:
+                        self.send(400, {'error': '公開状態を指定してください。'})
                 elif self.path == '/api/logout' and self.cloud_config():
                     vault.call('/auth/v1/logout', 'POST', {})
                     self.send(200, {'status': 'signed_out'})

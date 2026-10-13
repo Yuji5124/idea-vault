@@ -180,6 +180,14 @@ CHROMIUM_PATH=/usr/bin/chromium node tests/cloud-browser.cjs
 
 模擬接続先のテストは実Supabaseの設定・RLS・利用枠・稼働を検証するものではありません。実プロジェクトを接続したあと、未ログイン／本人以外での拒否、ファイル保存とダウンロード、別端末からの取得を確認してください。クラウド開発環境で実Supabaseへ接続する場合は、そのプロジェクトの `PROJECT_ID.supabase.co` をネットワーク許可先へ追加する必要があります。
 
+## MUTOPIAへの公開展示
+
+IDEA VAULTの記録は既定で非公開です。MUTOPIAの詳細画面で利用者が明示的に「MUTOPIAへ公開」を選んだ記録だけを、公開専用の `mutopia_public_records` テーブルへ最小項目で複製します。評価、コメント、ファイル名、他の添付、保管庫の認証情報は複製しません。タイトル・分類・カテゴリー・タグ・メモ本文と、先頭の画像1枚（5MiB以下）は公開されることを確認してから操作してください。
+
+初回だけSupabase SQL Editorでリポジトリの `supabase.sql` を再実行し、MUTOPIA公開テーブルと `mutopia-public` 専用バケットを作成してください。既存の `vault_records` RLSと非公開 `idea-vault` バケットは変更しません。選択画像は本人のJWTで非公開バケットから読み、専用の公開バケットへ複製します。公開を解除すると公開インデックス行を削除し、公開画像も削除します。
+
+IDEA VAULTのクラウド版RenderサービスとMUTOPIAのRenderサービスは、変更コードをそれぞれ手動デプロイしてください。MUTOPIAでは既定の `IDEA_VAULT_URL`（`https://idea-vault-cmgl.onrender.com`）を使い、秘密鍵やservice-roleキーの追加は不要です。未ログインのMUTOPIAは公開済みデータだけを表示し、本人ログイン後は従来どおり本人の全記録を本人だけに表示します。
+
 ## 今後の拡張
 
 基本機能はAIなしで動きます。次の段階で、任意のAI分類、画像／PDFのOCR、全文索引、JIMA FILTER履歴・選択傾向の分析、PRINCIPLE LOOP / PIXVAULT / SOUNDVAULT / NEXUSとのJSON連携を追加できます。現時点ではファイル名によるタイトル候補とMIME判定のみを行い、AI解析は実装していません。クラウド版は後述のGitHub取り込みに対応します。

@@ -14,8 +14,9 @@ class CloudError(ValueError):
     pass
 
 
-def request(url, public_key, token, path, method='GET', payload=None, raw=None, mime=None, binary=False):
+def request(url, public_key, token, path, method='GET', payload=None, raw=None, mime=None, binary=False, prefer=None, extra_headers=None):
     headers = {'apikey': public_key, 'Authorization': 'Bearer ' + (token or public_key)}
+    headers.update(extra_headers or {})
     data = raw
     if payload is not None:
         data = json.dumps(payload, ensure_ascii=False).encode()
@@ -23,7 +24,7 @@ def request(url, public_key, token, path, method='GET', payload=None, raw=None, 
     elif raw is not None:
         headers['Content-Type'] = mime or 'application/octet-stream'
     if path.startswith('/rest/'):
-        headers['Prefer'] = 'return=representation'
+        headers['Prefer'] = prefer or 'return=representation'
     try:
         with urlopen(Request(url.rstrip('/') + path, data=data, headers=headers, method=method), timeout=45) as response:
             body = response.read()
@@ -78,6 +79,75 @@ class CloudVault:
     def remove(self, record, files):
         if files:
             self.call('/storage/v1/object/idea-vault', 'DELETE', {'prefixes': [self.object_path(record, f) for f in files]})
+
+    def mutopia_publications(self):
+        query = '/rest/v1/mutopia_public_records?select=id&owner_id=eq.' + quote(self.owner, safe='') + '&order=published_at.desc&limit=500'
+        return self.call(query)
+
+    def publish_to_mutopia(self, identifier):
+        record = self.get(identifier)
+        image = next((f for f in record.get('files', [])
+                      if f.get('mime') in {'image/png', 'image/jpeg', 'image/webp', 'image/avif', 'image/gif'}), None)
+        image_path = None
+        image_url = None
+        if image:
+            if int(image.get('size', 0)) > 5 * 1024 * 1024:
+                raise CloudError('MUTOPIA公開画像は5MB以下にしてください。')
+            extension = re.search(r'\.[A-Za-z0-9]{1,8}$', image.get('name', ''))
+            suffix = extension.group(0).lower() if extension else '.img'
+            image_path = f'{self.owner}/{record["id"]}/{uuid.uuid4().hex}{suffix}'
+            contents = self.read_file(record, image)
+            self.call('/storage/v1/object/mutopia-public/' + quote(image_path, safe='/'), 'POST', raw=contents, mime=image['mime'])
+            image_url = self.url.rstrip('/') + '/storage/v1/object/public/mutopia-public/' + quote(image_path, safe='/')
+        existing = self.call('/rest/v1/mutopia_public_records?select=image_path&id=eq.' + quote(record['id'], safe='') + '&owner_id=eq.' + quote(self.owner, safe=''))
+        existing_path = existing[0].get('image_path') if existing else None
+        published_ids = {row['id'] for row in self.call('/rest/v1/mutopia_public_records?select=id&limit=500')}
+        public_relations = [value for value in record.get('relations', []) if value in published_ids]
+        safe_record = {
+            'id': record['id'], 'owner_id': self.owner,
+            'title': str(record.get('title', ''))[:200],
+            'type': record.get('type', 'IDEA'),
+            'category': str(record.get('category', ''))[:120],
+            'tags': [str(tag)[:80] for tag in record.get('tags', [])[:30]],
+            'body': str(record.get('body', ''))[:12000],
+            'relations': public_relations,
+            'created_at': record.get('created_at'),
+            'image_path': image_path,
+        }
+        path = '/rest/v1/mutopia_public_records?on_conflict=id'
+        try:
+            self.call(path, 'POST', safe_record, prefer='resolution=merge-duplicates,return=representation')
+        except CloudError:
+            if image_path:
+                try:
+                    self.call('/storage/v1/object/mutopia-public', 'DELETE', {'prefixes': [image_path]})
+                except CloudError:
+                    pass
+            raise
+        if existing_path and existing_path != image_path:
+            try:
+                self.call('/storage/v1/object/mutopia-public', 'DELETE', {'prefixes': [existing_path]})
+            except CloudError:
+                pass
+        return {'id': record['id'], 'published': True, 'image_url': image_url}
+
+    def unpublish_from_mutopia(self, identifier):
+        rows = self.call('/rest/v1/mutopia_public_records?select=image_path&id=eq.' + quote(identifier, safe='') + '&owner_id=eq.' + quote(self.owner, safe=''))
+        image_path = rows[0].get('image_path') if rows else None
+        if image_path:
+            self.call('/storage/v1/object/mutopia-public', 'DELETE', {'prefixes': [image_path]})
+        self.call('/rest/v1/mutopia_public_records?id=eq.' + quote(identifier, safe='') + '&owner_id=eq.' + quote(self.owner, safe=''), 'DELETE')
+        return {'id': identifier, 'published': False}
+
+    @staticmethod
+    def public_mutopia_records(url, public_key):
+        rows = request(url, public_key, None, '/rest/v1/mutopia_public_records?select=id,title,type,category,tags,body,relations,created_at,image_path,published_at&order=published_at.desc&limit=500')
+        visible_ids = {row['id'] for row in rows}
+        for row in rows:
+            path = row.pop('image_path', None)
+            row['relations'] = [identifier for identifier in row.get('relations', []) if identifier in visible_ids]
+            row['image_url'] = (url.rstrip('/') + '/storage/v1/object/public/mutopia-public/' + quote(path, safe='/')) if path else None
+        return rows
 
     def save(self, record, new=False):
         if new:
