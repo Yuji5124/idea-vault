@@ -150,6 +150,8 @@ class Vault:
     def update(self, identifier, changes):
         with self.lock:
             record = self.get(identifier)
+            if record.get('deleted_at') or record.get('purging'):
+                raise ValueError('ゴミ箱の記録は先に復元してください。')
             if changes.get('type', record['type']) not in KINDS:
                 raise ValueError('分類が不正です')
             if changes.get('jima_filter', record['jima_filter']) not in RATINGS:
@@ -191,6 +193,8 @@ class Vault:
             if source_id == target_id:
                 raise ValueError('別の記録を選択してください')
             source, target = self.get(source_id), self.get(target_id)
+            if source.get('deleted_at') or target.get('deleted_at'):
+                raise ValueError('ゴミ箱の記録は先に復元してください。')
             selected = [f for f in source['files'] if f['id'] in file_ids]
             if not selected:
                 raise ValueError('移動するファイルを選択してください')
@@ -491,6 +495,9 @@ class Handler(BaseHTTPRequestHandler):
                     self.send(200, vault.update(payload['id'], payload['changes']))
                 elif self.path == '/api/transfer':
                     self.send(200, vault.transfer(payload['source'], payload['target'], payload['files']))
+                elif self.path == '/api/manage':
+                    from record_trash import manage
+                    self.send(200, manage(vault, payload))
                 elif self.path == '/api/mutopia/publish':
                     if not self.cloud_config():
                         self.send(503, {'error': 'MUTOPIA公開にはクラウド版IDEA VAULTが必要です。'})

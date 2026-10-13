@@ -14,6 +14,7 @@
     <button class="nav" data-view="PRINCIPLE"><span class="layerdot principle"></span>PRINCIPLE</button>
     <button class="nav" data-view="IDEA"><span class="layerdot idea"></span>IDEA</button>
     <button class="nav" data-view="VISUAL"><span class="layerdot visual"></span>VISUAL</button>
+    <button class="nav" data-view="TRASH"><span>▱</span>ゴミ箱 <b id="countTrash">0</b></button>
   </nav>
   <div class="sidebar-bottom"><span class="statusdot"></span> LOCAL STORAGE<span>あなたの発想を、あなたの手元に。</span></div>
 </aside>
@@ -60,7 +61,7 @@
   <div class="jima"><label>JIMA FILTER<select name="jima_filter"><option>未評価</option><option>GOOD</option><option>HOLD</option><option>BAD</option></select></label><label>ひとことコメント<textarea name="comment" rows="2" placeholder="ルールが一文で説明できる。"></textarea></label></div>
   <label class="checkbox"><input name="inbox" type="checkbox">INBOXに置く（外すと分類先へ整理）</label>
   <div id="dates" class="dates"></div><details><summary>添付ファイルの移動・統合</summary><p class="hint">これはMUTOPIA公開とは別の操作です。選んだファイルを別の記録へ移します。元のメモと評価は残ります。</p><div id="transferFiles"></div><label>移動先<select id="transferTarget"></select></label><div class="transfer-actions"><button type="button" class="secondary" id="moveFiles">選択ファイルを移動</button><button type="button" class="secondary" id="splitFiles">新しいIDEAへ分離</button></div><p class="hint">すべて選択して移動するとファイルを統合できます。</p></details>
-  <div class="dialog-actions"><span id="saveStatus" role="status"></span><button class="primary" type="submit">変更を保存</button></div>
+  <div class="dialog-actions"><button id="trashIdea" type="button" class="secondary">ゴミ箱へ移動</button><button id="restoreIdea" type="button" class="secondary" hidden>ゴミ箱から復元</button><button id="purgeIdea" type="button" class="danger" hidden>完全削除</button><span id="saveStatus" role="status"></span><button id="saveIdea" class="primary" type="submit">変更を保存</button></div>
 </form></dialog>
 <dialog id="noteDialog"><form id="noteForm"><div class="dialog-header"><span class="eyebrow">CAPTURE A THOUGHT</span><button type="button" class="iconbutton" id="closeNote" aria-label="閉じる">×</button></div><h2>ひらめきを残す</h2><label>タイトル<input name="title" required maxlength="200" placeholder="名前は、あとから変えられます。"></label><label>資料の日付<input name="record_date" type="date"></label><label>分類<select name="type"><option>IDEA</option><option>SOURCE</option><option>PRINCIPLE</option><option>VISUAL</option></select></label><label>メモ<textarea name="body" rows="6" placeholder="一行だけでも大丈夫。"></textarea></label><div class="dialog-actions"><button class="primary" type="submit">INBOXに保存</button></div></form></dialog>
 </body></html>

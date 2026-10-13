@@ -99,6 +99,12 @@ class SupabaseDouble(BaseHTTPRequestHandler):
                 identifier = parse_qs(urlsplit(self.path).query)['id'][0][3:]
                 self.server.rows[identifier] = copy.deepcopy(data['metadata'])
                 self.reply(200, [data])
+            elif self.command == 'DELETE':
+                query = parse_qs(urlsplit(self.path).query)
+                identifier = query.get('id', [''])[0][3:]
+                if query.get('owner_id', [''])[0][3:] == OWNER:
+                    self.server.rows.pop(identifier, None)
+                self.reply(200, [])
         elif path == '/rest/v1/mutopia_public_records':
             query = parse_qs(urlsplit(self.path).query)
             if self.command == 'GET':
@@ -142,6 +148,11 @@ class SupabaseDouble(BaseHTTPRequestHandler):
                 self.reply(409, {})
                 return
             self.server.objects[name] = raw
+            self.reply(200, {})
+        elif path == '/storage/v1/object/idea-vault' and self.command == 'DELETE':
+            for name in data.get('prefixes', []):
+                if name.startswith(OWNER + '/'):
+                    self.server.objects.pop(name, None)
             self.reply(200, {})
         elif path.startswith('/storage/v1/object/authenticated/idea-vault/'):
             name = unquote(path.split('/idea-vault/', 1)[1])
@@ -293,6 +304,39 @@ class CloudTests(unittest.TestCase):
         with self.assertRaises(HTTPError) as error:
             self.call('/api/mutopia/publish', {'record_id': 'owned', 'published': True}, token=None)
         self.assertEqual(error.exception.code, 401)
+
+    def test_trash_restore_and_permanent_delete_are_owner_only_and_unpublish(self):
+        image = file('cover.png', b'private-image-bytes')
+        record = self.call('/api/import', {'groups': [{'title': 'trash target', 'files': [image, file('secret.txt', b'private')]}]})['records'][0]
+        self.call('/api/mutopia/publish', {'record_id': record['id'], 'published': True})
+        public_key = next(iter(self.provider.public_objects))
+        with self.assertRaises(HTTPError) as error:
+            self.call('/api/manage', {'id': record['id'], 'action': 'trash'}, token=None)
+        self.assertEqual(error.exception.code, 401)
+
+        result = self.call('/api/manage', {'id': record['id'], 'action': 'trash'})
+        self.assertTrue(result['deleted_at'])
+        self.assertNotIn(record['id'], self.provider.mutopia_rows)
+        self.assertNotIn(public_key, self.provider.public_objects)
+        self.assertTrue(self.provider.rows[record['id']]['deleted_at'])
+        with self.assertRaises(HTTPError) as error:
+            self.call('/api/update', {'id': record['id'], 'changes': {'title': 'changed'}})
+        self.assertEqual(error.exception.code, 400)
+
+        restored = self.call('/api/manage', {'id': record['id'], 'action': 'restore'})
+        self.assertTrue(restored['restored'])
+        self.assertNotIn('deleted_at', self.provider.rows[record['id']])
+        self.assertEqual(self.provider.mutopia_rows, {}, 'restore must not silently republish')
+
+        self.call('/api/manage', {'id': record['id'], 'action': 'trash'})
+        with self.assertRaises(HTTPError) as error:
+            self.call('/api/manage', {'id': record['id'], 'action': 'purge', 'confirmation': 'wrong'})
+        self.assertEqual(error.exception.code, 400)
+        self.assertIn(record['id'], self.provider.rows)
+        self.call('/api/manage', {'id': record['id'], 'action': 'purge', 'confirmation': 'trash target'})
+        self.assertNotIn(record['id'], self.provider.rows)
+        self.assertFalse(self.provider.objects)
+        self.assertEqual(self.call('/api/records')['records'], [])
 
     def test_backup_download_is_restorable_by_local_vault(self):
         import backup_cloud

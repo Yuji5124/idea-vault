@@ -86,6 +86,8 @@ class CloudVault:
 
     def publish_to_mutopia(self, identifier):
         record = self.get(identifier)
+        if record.get('deleted_at') or record.get('purging'):
+            raise CloudError('ゴミ箱の記録は公開できません。先に復元してください。')
         image = next((f for f in record.get('files', [])
                       if f.get('mime') in {'image/png', 'image/jpeg', 'image/webp', 'image/avif', 'image/gif'}), None)
         image_path = None
@@ -212,6 +214,8 @@ class CloudVault:
     def update(self, identifier, changes):
         from server import KINDS, RATINGS, stamp
         record = self.get(identifier)
+        if record.get('deleted_at') or record.get('purging'):
+            raise CloudError('ゴミ箱の記録は先に復元してください。')
         if changes.get('type', record['type']) not in KINDS or changes.get('jima_filter', record['jima_filter']) not in RATINGS:
             raise CloudError('分類・評価を確認してください。')
         if 'record_date' in changes:
@@ -245,6 +249,8 @@ class CloudVault:
         if source_id == target_id:
             raise CloudError('別の記録を選択してください。')
         source, target = self.get(source_id), self.get(target_id)
+        if source.get('deleted_at') or target.get('deleted_at'):
+            raise CloudError('ゴミ箱の記録は先に復元してください。')
         selected = [f for f in source['files'] if f['id'] in file_ids]
         if not selected:
             raise CloudError('ファイルを選択してください。')
