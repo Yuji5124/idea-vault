@@ -138,6 +138,22 @@ class ApiTests(unittest.TestCase):
         moved = self.server.vault.get(target['id'])['files'][0]
         self.assertEqual((self.server.vault.root / target['folder'] / moved['thumbnail_path']).read_bytes(), thumbnail)
 
+    def test_cross_origin_write_rejected(self):
+        with self.assertRaises(HTTPError) as raised:
+            self.request('/api/create', {'title': 'bad'}, 'https://evil.example')
+        self.assertEqual(raised.exception.code, 403)
+        self.assertEqual(self.server.vault.records(), [])
+
+    def test_partial_batch_reports_saved_and_failed_groups(self):
+        with self.request('/api/import', {'groups': [{'title': 'ok', 'files': [file('a.txt')]}, {'title': 'bad', 'files': [{'name': 'x', 'data': '!'}]}]}) as response:
+            result = json.load(response)
+        self.assertEqual(len(result['records']), 1)
+        self.assertEqual(len(result['errors']), 1)
+
+
+if __name__ == '__main__':
+    unittest.main()
+
     def test_legacy_image_gets_low_resolution_preview_without_persisting_changes(self):
         from io import BytesIO
         from PIL import Image
@@ -157,19 +173,3 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(image.size, (320, 213))
         self.assertEqual(file_path.read_bytes(), original_bytes)
         self.assertNotIn('thumbnail_path', self.server.vault.get(record['id'])['files'][0])
-
-    def test_cross_origin_write_rejected(self):
-        with self.assertRaises(HTTPError) as raised:
-            self.request('/api/create', {'title': 'bad'}, 'https://evil.example')
-        self.assertEqual(raised.exception.code, 403)
-        self.assertEqual(self.server.vault.records(), [])
-
-    def test_partial_batch_reports_saved_and_failed_groups(self):
-        with self.request('/api/import', {'groups': [{'title': 'ok', 'files': [file('a.txt')]}, {'title': 'bad', 'files': [{'name': 'x', 'data': '!'}]}]}) as response:
-            result = json.load(response)
-        self.assertEqual(len(result['records']), 1)
-        self.assertEqual(len(result['errors']), 1)
-
-
-if __name__ == '__main__':
-    unittest.main()
