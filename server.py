@@ -382,7 +382,11 @@ class Handler(BaseHTTPRequestHandler):
                     thumbnail_path = file.get('thumbnail_storage_path') if self.cloud_config() else file.get('thumbnail_path')
                     if self.cloud_config():
                         if thumbnail_path:
-                            contents = vault.read_thumbnail(record, file)
+                            try:
+                                contents = vault.read_thumbnail(record, file)
+                            except Exception:
+                                # Rebuild missing or inaccessible sidecars from the untouched original.
+                                contents = make_preview_thumbnail(vault.read_file(record, file))
                         else:
                             contents = make_preview_thumbnail(vault.read_file(record, file))
                     else:
