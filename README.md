@@ -1,13 +1,14 @@
 # IDEA VAULT
 
 思いついたものを、とにかく簡単に放り込める、自分専用のローカルWebアプリ。
-画像・Markdown・TXT・PDF・HTML・動画などをINBOXへ保存し、あとから原理やアイデアを結び付けます。外部API・アカウント・Pythonパッケージのインストールは不要です。
+画像・Markdown・TXT・PDF・HTML・動画などをINBOXへ保存し、あとから原理やアイデアを結び付けます。通常の保存・閲覧には外部APIやアカウントは不要です。過去の画像から一覧用プレビューを作るため、初回起動時にPillowをインストールしてください。
 
 ## セットアップ・起動
 
-Python **3.10以上**を用意し、このリポジトリで実行します。
+Python **3.10以上**を用意し、このリポジトリで依存パッケージを入れてから起動します。
 
 ```sh
+python3 -m pip install -r requirements.txt
 python3 server.py
 ```
 
