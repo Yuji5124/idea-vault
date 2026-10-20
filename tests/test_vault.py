@@ -153,3 +153,23 @@ class ApiTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+    def test_legacy_image_gets_low_resolution_preview_without_persisting_changes(self):
+        from io import BytesIO
+        from PIL import Image
+
+        original = BytesIO()
+        Image.new('RGB', (1200, 800), (96, 148, 202)).save(original, format='PNG')
+        record = self.server.vault.create('old image', [file('old.png', original.getvalue())])
+        saved = record['files'][0]
+        self.assertNotIn('thumbnail_path', saved)
+        file_path = self.server.vault.root / record['folder'] / saved['path']
+        original_bytes = file_path.read_bytes()
+
+        with self.request(f"/api/file/{record['id']}/{saved['id']}?thumbnail=1") as response:
+            preview = response.read()
+            self.assertEqual(response.headers['Content-Type'], 'image/webp')
+        with Image.open(BytesIO(preview)) as image:
+            self.assertEqual(image.size, (320, 213))
+        self.assertEqual(file_path.read_bytes(), original_bytes)
+        self.assertNotIn('thumbnail_path', self.server.vault.get(record['id'])['files'][0])

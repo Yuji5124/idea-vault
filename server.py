@@ -4,6 +4,7 @@ import argparse
 import base64
 import binascii
 import hmac
+from io import BytesIO
 import json
 import mimetypes
 import os
@@ -15,6 +16,20 @@ import uuid
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote, urlsplit, parse_qs
+
+
+def make_preview_thumbnail(contents):
+    """Create a small, deliberately soft preview without persisting or changing the original."""
+    from PIL import Image, ImageOps
+
+    with Image.open(BytesIO(contents)) as source:
+        source = ImageOps.exif_transpose(source)
+        source.thumbnail((320, 320), Image.Resampling.LANCZOS)
+        if source.mode not in {'RGB', 'RGBA'}:
+            source = source.convert('RGBA' if 'A' in source.getbands() else 'RGB')
+        output = BytesIO()
+        source.save(output, format='WEBP', quality=38, method=4)
+        return output.getvalue()
 
 WEB = Path(__file__).parent / 'web'
 KINDS = {'SOURCE', 'PRINCIPLE', 'IDEA', 'VISUAL'}
@@ -365,15 +380,22 @@ class Handler(BaseHTTPRequestHandler):
                 thumbnail = 'thumbnail' in parse_qs(parsed.query, keep_blank_values=True)
                 if thumbnail:
                     thumbnail_path = file.get('thumbnail_storage_path') if self.cloud_config() else file.get('thumbnail_path')
-                    if not thumbnail_path:
-                        raise ValueError('サムネイルはありません')
                     if self.cloud_config():
-                        contents = vault.read_thumbnail(record, file)
+                        if thumbnail_path:
+                            contents = vault.read_thumbnail(record, file)
+                        else:
+                            contents = make_preview_thumbnail(vault.read_file(record, file))
                     else:
-                        path = (vault.root / record['folder'] / thumbnail_path).resolve()
-                        if not path.is_relative_to(vault.root):
-                            raise ValueError('不正なパスです')
-                        contents = path.read_bytes()
+                        if thumbnail_path:
+                            path = (vault.root / record['folder'] / thumbnail_path).resolve()
+                            if not path.is_relative_to(vault.root):
+                                raise ValueError('不正なパスです')
+                            contents = path.read_bytes()
+                        else:
+                            path = (vault.root / record['folder'] / file['path']).resolve()
+                            if not path.is_relative_to(vault.root):
+                                raise ValueError('不正なパスです')
+                            contents = make_preview_thumbnail(path.read_bytes())
                     self.send(200, contents, 'image/webp')
                     return
                 if self.cloud_config():
