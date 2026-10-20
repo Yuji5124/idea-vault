@@ -129,7 +129,7 @@ class DocumentLocalTests(unittest.TestCase):
             saved = Vault(root).records()[0]
             from pathlib import Path
             self.assertEqual((Path(root)/saved['folder']/saved['files'][0]['path']).read_bytes(), RAW)
-            self.assertEqual((Path(root)/saved['folder']/'idea.md').read_text(), TEXT)
+            self.assertEqual((Path(root)/saved['folder']/'idea.md').read_text(encoding='utf-8'), TEXT)
 
 
 class StorageKeyTests(unittest.TestCase):

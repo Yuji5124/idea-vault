@@ -73,6 +73,13 @@ class CloudVault:
     def read_file(self, record, file):
         return self.call('/storage/v1/object/authenticated/idea-vault/' + quote(self.object_path(record, file), safe='/'), binary=True)
 
+    def read_thumbnail(self, record, file):
+        path = file.get('thumbnail_storage_path')
+        if not path:
+            raise CloudError('サムネイルはありません。')
+        object_path = self.owner + '/' + record['id'] + '/' + path
+        return self.call('/storage/v1/object/authenticated/idea-vault/' + quote(object_path, safe='/'), binary=True)
+
     def upload(self, record, file, raw):
         self.call('/storage/v1/object/idea-vault/' + quote(self.object_path(record, file), safe='/'), 'POST', raw=raw, mime=file['mime'])
 
@@ -201,6 +208,16 @@ class CloudVault:
                         'mime': mime, 'size': len(raw), 'created_at': created,
                         'text': raw[:200000].decode('utf-8', errors='replace') if Path(item['name']).suffix.lower() in {'.txt', '.md', '.markdown', '.html', '.htm', '.csv', '.json'} else ''}
                 self.upload(record, file, raw)
+                thumbnail_data = item.get('thumbnail')
+                if mime.startswith('image/') and isinstance(thumbnail_data, str) and len(thumbnail_data) <= 400_000:
+                    try:
+                        thumbnail = base64.b64decode(thumbnail_data, validate=True)
+                    except (ValueError, base64.binascii.Error):
+                        thumbnail = b''
+                    if thumbnail.startswith(b'RIFF') and thumbnail[8:12] == b'WEBP' and len(thumbnail) <= 300_000:
+                        file['thumbnail_storage_path'] = 'thumbnails/' + file_id + '.webp'
+                        object_path = self.owner + '/' + record['id'] + '/' + file['thumbnail_storage_path']
+                        self.call('/storage/v1/object/idea-vault/' + quote(object_path, safe='/'), 'POST', raw=thumbnail, mime='image/webp')
                 record['files'].append(file)
             if record['files']:
                 record['created_at'] = min(f['created_at'] for f in record['files'])
@@ -266,6 +283,8 @@ class CloudVault:
             used.add(name)
             copy = {**file, 'name': name, 'path': file['path'].split('/')[0] + '/' + name}
             self.upload(target, copy, self.read_file(source, file))
+            if file.get('thumbnail_storage_path'):
+                self.call('/storage/v1/object/idea-vault/' + quote(self.owner + '/' + target['id'] + '/' + copy['thumbnail_storage_path'], safe='/'), 'POST', raw=self.read_thumbnail(source, file), mime='image/webp')
             target['files'].append(copy)
         target['relations'] = sorted(set(target['relations'] + [source_id]))
         target['updated_at'] = stamp()

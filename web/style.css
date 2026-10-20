@@ -15,3 +15,4 @@
 .nav[data-view="TRASH"]{margin-top:auto;color:#875c50}
 .nav[data-view="TRASH"].active{background:#f3e8e2;color:#784a3e}
 .dialog-actions{flex-wrap:wrap}
+.pagination{display:flex;justify-content:center;align-items:center;gap:14px;margin:24px 0}.pagination span{font-size:11px;color:#81897d}.pagination button{padding:8px 14px}

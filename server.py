@@ -126,6 +126,18 @@ class Vault:
                         out.write(raw)
                         out.flush()
                         os.fsync(out.fileno())
+                    thumbnail_path = ''
+                    thumbnail_data = item.get('thumbnail')
+                    if mime.startswith('image/') and isinstance(thumbnail_data, str) and len(thumbnail_data) <= 400_000:
+                        try:
+                            thumbnail = base64.b64decode(thumbnail_data, validate=True)
+                        except (ValueError, binascii.Error):
+                            thumbnail = b''
+                        if thumbnail.startswith(b'RIFF') and thumbnail[8:12] == b'WEBP' and len(thumbnail) <= 300_000:
+                            thumbnail_path = 'thumbnails/' + uuid.uuid4().hex + '.webp'
+                            thumbnail_file = staging / thumbnail_path
+                            thumbnail_file.parent.mkdir(exist_ok=True)
+                            thumbnail_file.write_bytes(thumbnail)
                     text = ''
                     if Path(original).suffix.lower() in {'.txt', '.md', '.markdown', '.html', '.htm', '.csv', '.json'}:
                         text = raw[:200000].decode('utf-8', errors='replace')
@@ -135,7 +147,8 @@ class Vault:
                     record['files'].append({'id': uuid.uuid4().hex, 'name': path.name,
                         'original_name': original, 'original_path': item.get('relativePath', original),
                         'path': str(path.relative_to(staging)), 'mime': mime, 'size': len(raw),
-                        'created_at': created, 'text': text})
+                        'created_at': created, 'text': text,
+                        **({'thumbnail_path': thumbnail_path} if thumbnail_path else {})})
                 if record['files']:
                     record['created_at'] = min(f['created_at'] for f in record['files'])
                 (staging / 'idea.md').write_text(body, encoding='utf-8')
@@ -206,7 +219,14 @@ class Vault:
                     path = unique_path(directory, file['name'])
                     shutil.copy2(self.root / source['folder'] / file['path'], path)
                     copied.append(path)
-                    target['files'].append({**file, 'name': path.name, 'path': str(path.relative_to(self.root / target['folder']))})
+                    copied_file = {**file, 'name': path.name, 'path': str(path.relative_to(self.root / target['folder']))}
+                    if file.get('thumbnail_path'):
+                        thumbnail_source = self.root / source['folder'] / file['thumbnail_path']
+                        thumbnail_target = self.root / target['folder'] / file['thumbnail_path']
+                        thumbnail_target.parent.mkdir(exist_ok=True)
+                        shutil.copy2(thumbnail_source, thumbnail_target)
+                        copied.append(thumbnail_target)
+                    target['files'].append(copied_file)
                 target['relations'] = sorted(set(target['relations'] + [source_id]))
                 target['updated_at'] = stamp()
                 self.save(target)
@@ -221,6 +241,8 @@ class Vault:
             # Retain the source note/evaluation and relation, even when empty.
             for file in selected:
                 (self.root / source['folder'] / file['path']).unlink()
+                if file.get('thumbnail_path'):
+                    (self.root / source['folder'] / file['thumbnail_path']).unlink(missing_ok=True)
             return target
 
 
@@ -340,6 +362,20 @@ class Handler(BaseHTTPRequestHandler):
                 file = next((f for f in record['files'] if f['id'] == parts[4]), None)
                 if not file:
                     raise ValueError('ファイルが見つかりません')
+                thumbnail = 'thumbnail' in parse_qs(parsed.query, keep_blank_values=True)
+                if thumbnail:
+                    thumbnail_path = file.get('thumbnail_storage_path') if self.cloud_config() else file.get('thumbnail_path')
+                    if not thumbnail_path:
+                        raise ValueError('サムネイルはありません')
+                    if self.cloud_config():
+                        contents = vault.read_thumbnail(record, file)
+                    else:
+                        path = (vault.root / record['folder'] / thumbnail_path).resolve()
+                        if not path.is_relative_to(vault.root):
+                            raise ValueError('不正なパスです')
+                        contents = path.read_bytes()
+                    self.send(200, contents, 'image/webp')
+                    return
                 if self.cloud_config():
                     contents = vault.read_file(record, file)
                 else:

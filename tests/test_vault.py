@@ -40,7 +40,7 @@ class VaultTests(unittest.TestCase):
     def test_dated_folder_and_same_title_no_overwrite(self):
         a = self.vault.create('2026-10-07_蜘蛛ゲーム', [file('memo.md', path='蜘蛛ゲーム/memo.md'), file('game.png', path='蜘蛛ゲーム/images/game.png')])
         b = self.vault.create('2026-10-07_蜘蛛ゲーム', [file('memo.md', b'new')])
-        self.assertEqual(a['folder'], 'inbox/2026-10-07_蜘蛛ゲーム')
+        self.assertEqual(a['folder'].replace('\\', '/'), 'inbox/2026-10-07_蜘蛛ゲーム')
         self.assertNotEqual(a['folder'], b['folder'])
         self.assertEqual(len(a['files']), 2)
         self.assertEqual(a['files'][1]['original_path'], '蜘蛛ゲーム/images/game.png')
@@ -50,11 +50,11 @@ class VaultTests(unittest.TestCase):
         principle = self.vault.create('痕跡から推測する', kind='PRINCIPLE')
         idea = self.vault.create('探索ゲーム')
         result = self.vault.update(idea['id'], {'inbox': False, 'relations': [source['id'], principle['id']], 'tags': ['蜘蛛'], 'category': 'ゲーム', 'jima_filter': 'GOOD', 'comment': '一文で伝わる', 'body': 'prototype'})
-        self.assertTrue(result['folder'].startswith('ideas/'))
+        self.assertTrue(result['folder'].replace('\\', '/').startswith('ideas/'))
         restored = Vault(self.temp.name).get(idea['id'])
         self.assertEqual(restored['jima_filter'], 'GOOD')
         self.assertEqual(restored['relations'], [source['id'], principle['id']])
-        self.assertEqual((self.vault.root / result['folder'] / 'idea.md').read_text(), 'prototype')
+        self.assertEqual((self.vault.root / result['folder'] / 'idea.md').read_text(encoding='utf-8'), 'prototype')
         self.assertEqual(restored['imported_at'], idea['imported_at'])
 
     def test_failed_import_leaves_no_partial_record(self):
@@ -122,6 +122,21 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(len(json.load(response)['records']), 1)
         with self.request('/') as response:
             self.assertIn(b'IDEA VAULT', response.read())
+
+    def test_thumbnail_endpoint_returns_small_sidecar_and_original_stays_unchanged(self):
+        thumbnail = b'RIFF\x04\x00\x00\x00WEBPtest'
+        result = self.server.vault.create('image', [file('photo.jpg', b'full-image-bytes') | {'thumbnail': base64.b64encode(thumbnail).decode()}])
+        saved = result['files'][0]
+        self.assertTrue(saved['thumbnail_path'].startswith('thumbnails/'))
+        with self.request(f"/api/file/{result['id']}/{saved['id']}?thumbnail=1") as response:
+            self.assertEqual(response.headers['Content-Type'], 'image/webp')
+            self.assertEqual(response.read(), thumbnail)
+        with self.request(f"/api/file/{result['id']}/{saved['id']}") as response:
+            self.assertEqual(response.read(), b'full-image-bytes')
+        target = self.server.vault.create('target')
+        self.server.vault.transfer(result['id'], target['id'], [saved['id']])
+        moved = self.server.vault.get(target['id'])['files'][0]
+        self.assertEqual((self.server.vault.root / target['folder'] / moved['thumbnail_path']).read_bytes(), thumbnail)
 
     def test_cross_origin_write_rejected(self):
         with self.assertRaises(HTTPError) as raised:
