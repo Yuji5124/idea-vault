@@ -245,6 +245,22 @@ class CloudTests(unittest.TestCase):
         self.assertEqual(self.call(f'/api/file/{target["id"]}/{record["files"][0]["id"]}'), b'first')
         self.assertEqual(len(self.provider.objects), 3, 'retain original object for recovery')
 
+    def test_private_thumbnail_is_stored_and_served_separately_from_original(self):
+        thumbnail = b'RIFF\x04\x00\x00\x00WEBPtest'
+        image = file('photo.jpg', b'original-image-bytes') | {'thumbnail': base64.b64encode(thumbnail).decode()}
+        result = self.call('/api/import', {'groups': [{'title': 'image', 'files': [image]}]})
+        record = result['records'][0]
+        saved = record['files'][0]
+        self.assertEqual(result['errors'], [])
+        self.assertTrue(saved['thumbnail_storage_path'].startswith('thumbnails/'))
+        self.assertEqual(self.call(f"/api/file/{record['id']}/{saved['id']}?thumbnail=1"), thumbnail)
+        self.assertEqual(self.call(f"/api/file/{record['id']}/{saved['id']}"), b'original-image-bytes')
+        target = self.call('/api/create', {'title': 'image target'})
+        self.call('/api/transfer', {'source': record['id'], 'target': target['id'], 'files': [saved['id']]})
+        moved = self.call('/api/records')['records'][0]['files'][0]
+        self.assertEqual(self.call(f"/api/file/{target['id']}/{moved['id']}?thumbnail=1"), thumbnail)
+        self.assertEqual(len(self.provider.objects), 4, 'keep source and destination image copies for recovery')
+
     def test_restart_does_not_depend_on_render_local_disk(self):
         self.call('/api/create', {'title': 'survives restart'})
         other = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
