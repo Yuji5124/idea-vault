@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""IDEA VAULT: a local, dependency-free file and metadata store."""
+"""IDEA VAULT: a local file and metadata store with on-demand image previews."""
 import argparse
 import base64
 import binascii
 import hmac
+from io import BytesIO
 import json
 import mimetypes
 import os
@@ -16,9 +17,23 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote, urlsplit, parse_qs
 
+
+def make_preview_thumbnail(contents):
+    """Create a small, deliberately soft preview without persisting or changing the original."""
+    from PIL import Image, ImageOps
+
+    with Image.open(BytesIO(contents)) as source:
+        source = ImageOps.exif_transpose(source)
+        source.thumbnail((320, 320), Image.Resampling.LANCZOS)
+        if source.mode not in {'RGB', 'RGBA'}:
+            source = source.convert('RGBA' if 'A' in source.getbands() else 'RGB')
+        output = BytesIO()
+        source.save(output, format='WEBP', quality=38, method=4)
+        return output.getvalue()
+
 WEB = Path(__file__).parent / 'web'
 KINDS = {'SOURCE', 'PRINCIPLE', 'IDEA', 'VISUAL'}
-RATINGS = {'未評価', 'GOOD', 'HOLD', 'BAD'}
+RATINGS = {'���]��', 'GOOD', 'HOLD', 'BAD'}
 MAX_REQUEST = 200 * 1024 * 1024
 
 
@@ -86,7 +101,7 @@ class Vault:
         for record in self.records():
             if record['id'] == identifier:
                 return record
-        raise ValueError('記録が見つかりません')
+        raise ValueError('�L�^��������܂���')
 
     def save(self, record):
         folder = record['folder']
@@ -95,9 +110,9 @@ class Vault:
 
     def create(self, title, files=(), kind='IDEA', inbox=True, body='', record_date=None, source_url=None):
         if kind not in KINDS:
-            raise ValueError('分類が不正です')
+            raise ValueError('���ނ��s���ł�')
         if not isinstance(title, str) or not title.strip():
-            raise ValueError('タイトルを入力してください')
+            raise ValueError('�^�C�g������͂��Ă�������')
         from document_import import record_date as validate_date
         document_date = validate_date(record_date) if record_date is not None else None
         now = stamp()
@@ -109,7 +124,7 @@ class Vault:
             staging.mkdir()
             record = {'schema_version': 1, 'id': uuid.uuid4().hex, 'title': title.strip(),
                       'type': kind, 'inbox': inbox, 'category': '', 'tags': [],
-                      'body': body, 'relations': [], 'jima_filter': '未評価', 'comment': '',
+                      'body': body, 'relations': [], 'jima_filter': '���]��', 'comment': '',
                       'created_at': now, 'imported_at': now, 'updated_at': now, 'files': []}
             record['record_date'] = document_date or now[:10]
             if source_url is not None:
@@ -164,27 +179,27 @@ class Vault:
         with self.lock:
             record = self.get(identifier)
             if record.get('deleted_at') or record.get('purging'):
-                raise ValueError('ゴミ箱の記録は先に復元してください。')
+                raise ValueError('�S�~���̋L�^�͐�ɕ������Ă��������B')
             if changes.get('type', record['type']) not in KINDS:
-                raise ValueError('分類が不正です')
+                raise ValueError('���ނ��s���ł�')
             if changes.get('jima_filter', record['jima_filter']) not in RATINGS:
-                raise ValueError('JIMA FILTER が不正です')
+                raise ValueError('JIMA FILTER ���s���ł�')
             if 'record_date' in changes:
                 from document_import import record_date as validate_date
                 changes = {**changes, 'record_date': validate_date(changes['record_date'])}
             for key in ('title', 'category', 'body', 'comment'):
                 if key in changes and not isinstance(changes[key], str):
-                    raise ValueError('テキスト形式が不正です')
+                    raise ValueError('�e�L�X�g�`�����s���ł�')
             if 'title' in changes and not changes['title'].strip():
-                raise ValueError('タイトルを入力してください')
+                raise ValueError('�^�C�g������͂��Ă�������')
             if 'tags' in changes and (not isinstance(changes['tags'], list) or not all(isinstance(t, str) for t in changes['tags'])):
-                raise ValueError('タグ形式が不正です')
+                raise ValueError('�^�O�`�����s���ł�')
             if 'relations' in changes:
                 ids = {r['id'] for r in self.records()} - {identifier}
                 if not isinstance(changes['relations'], list) or not all(isinstance(r, str) and r in ids for r in changes['relations']):
-                    raise ValueError('関連先が不正です')
+                    raise ValueError('�֘A�悪�s���ł�')
             if 'inbox' in changes and not isinstance(changes['inbox'], bool):
-                raise ValueError('INBOX の指定が不正です')
+                raise ValueError('INBOX �̎w�肪�s���ł�')
             for key in ('title', 'type', 'category', 'tags', 'body', 'relations', 'jima_filter', 'comment', 'inbox', 'record_date'):
                 if key in changes:
                     record[key] = changes[key]
@@ -204,13 +219,13 @@ class Vault:
         """Copy first, commit destination, then source; failures retain file bytes."""
         with self.lock:
             if source_id == target_id:
-                raise ValueError('別の記録を選択してください')
+                raise ValueError('�ʂ̋L�^��I�����Ă�������')
             source, target = self.get(source_id), self.get(target_id)
             if source.get('deleted_at') or target.get('deleted_at'):
-                raise ValueError('ゴミ箱の記録は先に復元してください。')
+                raise ValueError('�S�~���̋L�^�͐�ɕ������Ă��������B')
             selected = [f for f in source['files'] if f['id'] in file_ids]
             if not selected:
-                raise ValueError('移動するファイルを選択してください')
+                raise ValueError('�ړ�����t�@�C����I�����Ă�������')
             copied = []
             try:
                 for file in selected:
@@ -265,13 +280,13 @@ class Handler(BaseHTTPRequestHandler):
             from cloud_store import CloudVault, CloudError
             authorization = self.headers.get('Authorization', '')
             if not authorization.startswith('Bearer ') or len(authorization) > 16384:
-                self.send(401, {'error': 'ログインが必要です'})
+                self.send(401, {'error': '���O�C�����K�v�ł�'})
                 return False
             self.remote_vault = CloudVault(*config[:2], authorization[7:], config[2], self.server.cloud_lock)
             try:
                 self.remote_vault.verify()
             except CloudError:
-                self.send(401, {'error': 'ログインが必要です。接続設定または認証を確認してください。'})
+                self.send(401, {'error': '���O�C�����K�v�ł��B�ڑ��ݒ�܂��͔F�؂��m�F���Ă��������B'})
                 return False
             return True
         password = getattr(self.server, 'password', None)
@@ -285,7 +300,7 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, UnicodeError, binascii.Error):
             valid = False
         if not valid:
-            self.send(401, {'error': 'ログインが必要です'}, authenticate=True)
+            self.send(401, {'error': '���O�C�����K�v�ł�'}, authenticate=True)
         return valid
 
     def log_message(self, fmt, *args):
@@ -318,7 +333,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send(200, {'status': 'ok'})
             return
         if self.headers.get('Host', '') not in self.allowed_hosts():
-            self.send(403, {'error': 'ローカルからアクセスしてください'})
+            self.send(403, {'error': '���[�J������A�N�Z�X���Ă�������'})
             return
         if parsed.path == '/api/config':
             self.send(200, {'storage': 'cloud' if self.cloud_config() else 'local'})
@@ -338,7 +353,7 @@ class Handler(BaseHTTPRequestHandler):
                 records = CloudVault.public_mutopia_records(config[0], config[1])
                 self.send(200, {'records': records})
             except Exception:
-                self.send(503, {'error': 'MUTOPIA公開データを読み込めません。公開テーブルの設定を確認してください。'})
+                self.send(503, {'error': 'MUTOPIA���J�f�[�^��ǂݍ��߂܂���B���J�e�[�u���̐ݒ���m�F���Ă��������B'})
             return
         if not self.authenticated():
             return
@@ -350,30 +365,37 @@ class Handler(BaseHTTPRequestHandler):
                 self.send(200, {'records': records})
             elif parsed.path == '/api/mutopia/publications':
                 if not self.cloud_config():
-                    self.send(503, {'error': 'MUTOPIA公開にはクラウド版IDEA VAULTが必要です。'})
+                    self.send(503, {'error': 'MUTOPIA���J�ɂ̓N���E�h��IDEA VAULT���K�v�ł��B'})
                     return
                 self.send(200, {'ids': [row['id'] for row in self.remote_vault.mutopia_publications()]})
             elif parsed.path.startswith('/api/file/'):
                 parts = unquote(parsed.path).split('/')
                 if len(parts) != 5:
-                    raise ValueError('ファイルが見つかりません')
+                    raise ValueError('�t�@�C����������܂���')
                 vault = self.vault()
                 record = vault.get(parts[3])
                 file = next((f for f in record['files'] if f['id'] == parts[4]), None)
                 if not file:
-                    raise ValueError('ファイルが見つかりません')
+                    raise ValueError('�t�@�C����������܂���')
                 thumbnail = 'thumbnail' in parse_qs(parsed.query, keep_blank_values=True)
                 if thumbnail:
                     thumbnail_path = file.get('thumbnail_storage_path') if self.cloud_config() else file.get('thumbnail_path')
-                    if not thumbnail_path:
-                        raise ValueError('サムネイルはありません')
                     if self.cloud_config():
-                        contents = vault.read_thumbnail(record, file)
+                        if thumbnail_path:
+                            contents = vault.read_thumbnail(record, file)
+                        else:
+                            contents = make_preview_thumbnail(vault.read_file(record, file))
                     else:
-                        path = (vault.root / record['folder'] / thumbnail_path).resolve()
-                        if not path.is_relative_to(vault.root):
-                            raise ValueError('不正なパスです')
-                        contents = path.read_bytes()
+                        if thumbnail_path:
+                            path = (vault.root / record['folder'] / thumbnail_path).resolve()
+                            if not path.is_relative_to(vault.root):
+                                raise ValueError('�s���ȃp�X�ł�')
+                            contents = path.read_bytes()
+                        else:
+                            path = (vault.root / record['folder'] / file['path']).resolve()
+                            if not path.is_relative_to(vault.root):
+                                raise ValueError('�s���ȃp�X�ł�')
+                            contents = make_preview_thumbnail(path.read_bytes())
                     self.send(200, contents, 'image/webp')
                     return
                 if self.cloud_config():
@@ -381,7 +403,7 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     path = (vault.root / record['folder'] / file['path']).resolve()
                     if not path.is_relative_to(vault.root):
-                        raise ValueError('不正なパスです')
+                        raise ValueError('�s���ȃp�X�ł�')
                     contents = path.read_bytes()
                 safe_mimes = {'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif', 'video/mp4', 'video/quicktime', 'video/webm', 'audio/mpeg', 'audio/wav', 'audio/ogg'}
                 mime = file['mime'] if file['mime'] in safe_mimes else 'application/octet-stream'
@@ -390,13 +412,13 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 name = {'/': 'index.html', '/app.js': 'app.js', '/style.css': 'style.css', '/recovery.js': 'recovery.js'}.get(parsed.path)
                 if not name:
-                    self.send(404, {'error': '見つかりません'})
+                    self.send(404, {'error': '������܂���'})
                     return
                 self.send(200, (WEB / name).read_bytes(), mimetypes.guess_type(name)[0] + '; charset=utf-8')
         except (ValueError, FileNotFoundError) as error:
             self.send(404, {'error': str(error)})
         except Exception:
-            self.send(500, {'error': '保存データを読み込めません。サーバー側の保存先を確認してください。'})
+            self.send(500, {'error': '�ۑ��f�[�^��ǂݍ��߂܂���B�T�[�o�[���̕ۑ�����m�F���Ă��������B'})
 
     def do_POST(self):
         # Reject cross-site writes and DNS rebinding to the loopback service.
@@ -407,22 +429,22 @@ class Handler(BaseHTTPRequestHandler):
         if getattr(self.server, 'public_host', None):
             origins.add('https://' + self.server.public_host)
         if host not in allowed or (origin and origin not in origins):
-            self.send(403, {'error': 'ローカルの同一オリジンからアクセスしてください'})
+            self.send(403, {'error': '���[�J���̓���I���W������A�N�Z�X���Ă�������'})
             return
         auth_operation = bool(self.cloud_config() and self.path in {'/api/login', '/api/refresh', '/api/recovery-check', '/api/reset-password'})
         if not auth_operation and not self.authenticated():
             return
         if not self.headers.get('Content-Type', '').startswith('application/json'):
-            self.send(415, {'error': 'JSON形式で送信してください'})
+            self.send(415, {'error': 'JSON�`���ő��M���Ă�������'})
             return
         try:
             size = int(self.headers.get('Content-Length', '0'))
             if auth_operation and size > 16384:
-                self.send(413, {'error': 'リクエストが大きすぎます'})
+                self.send(413, {'error': '���N�G�X�g���傫�����܂�'})
                 return
             limit = 72 * 1024 * 1024 if self.cloud_config() else MAX_REQUEST
             if not 0 < size <= limit:
-                self.send(413, {'error': '投入サイズが大きすぎます。クラウドでは合計50MB、ローカルでは合計140MBまでに分けて投入してください。'})
+                self.send(413, {'error': '�����T�C�Y���傫�����܂��B�N���E�h�ł͍��v50MB�A���[�J���ł͍��v140MB�܂łɕ����ē������Ă��������B'})
                 return
             payload = json.loads(self.rfile.read(size))
             if auth_operation:
@@ -437,7 +459,7 @@ class Handler(BaseHTTPRequestHandler):
                             raise CloudError('Invalid request')
                         password = payload.get('password')
                         if self.path == '/api/reset-password' and (not isinstance(password, str) or not 12 <= len(password) <= 1024):
-                            self.send(400, {'error': 'パスワードは12文字以上1024文字以内で入力してください。'})
+                            self.send(400, {'error': '�p�X���[�h��12�����ȏ�1024�����ȓ��œ��͂��Ă��������B'})
                             return
                         if payload.get('type') != 'recovery':
                             raise CloudError('Invalid recovery type')
@@ -460,7 +482,7 @@ class Handler(BaseHTTPRequestHandler):
                             return
                         request(config[0], config[1], token, '/auth/v1/user', 'PUT', {'password': password})
                     except (CloudError, KeyError, TypeError):
-                        self.send(400, {'error': '再設定リンクが無効・期限切れ、またはこの保管庫の本人用ではありません。パスワード要件・接続設定を確認し、新しいメールを発行してください。'})
+                        self.send(400, {'error': '�Đݒ胊���N�������E�����؂�A�܂��͂��̕ۊǌɂ̖{�l�p�ł͂���܂���B�p�X���[�h�v���E�ڑ��ݒ���m�F���A�V�������[���𔭍s���Ă��������B'})
                         return
                     # Best-effort global refresh-session revocation. Supabase access
                     # JWTs may still live until expiry; never claim immediate revocation.
@@ -477,7 +499,7 @@ class Handler(BaseHTTPRequestHandler):
                     session = request(config[0], config[1], None, '/auth/v1/token?grant_type=' + grant, 'POST', fields)
                     CloudVault(config[0], config[1], session['access_token'], config[2]).verify()
                 except (CloudError, KeyError):
-                    self.send(401, {'error': 'ログインできませんでした。認証情報・接続設定を確認してください。'})
+                    self.send(401, {'error': '���O�C���ł��܂���ł����B�F�؏��E�ڑ��ݒ���m�F���Ă��������B'})
                     return
                 self.send(200, {field: session[field] for field in ('access_token', 'refresh_token', 'expires_in')})
                 return
@@ -486,12 +508,12 @@ class Handler(BaseHTTPRequestHandler):
                 if self.path == '/api/import':
                     groups = payload['groups']
                     if not isinstance(groups, list) or not groups:
-                        raise ValueError('ファイルを選択してください')
+                        raise ValueError('�t�@�C����I�����Ă�������')
                     if self.cloud_config():
                         encoded_files = [item.get('data', '') for group in groups if isinstance(group, dict) for item in group.get('files', []) if isinstance(item, dict)]
                         total = sum((len(value) // 4) * 3 - len(value) + len(value.rstrip('=')) for value in encoded_files if isinstance(value, str))
                         if total > 50 * 1024 * 1024:
-                            self.send(413, {'error': '無料クラウド版は1回の投入合計50MBまでです'})
+                            self.send(413, {'error': '�����N���E�h�ł�1��̓������v50MB�܂łł�'})
                             return
                     # Report per-group results so an interrupted batch is never silently lost.
                     saved = []
@@ -499,7 +521,7 @@ class Handler(BaseHTTPRequestHandler):
                     for group in groups:
                         try:
                             if not group.get('files'):
-                                raise ValueError('空のフォルダは取り込めません')
+                                raise ValueError('��̃t�H���_�͎�荞�߂܂���')
                             from document_import import markdown_group
                             metadata = markdown_group(group)
                             if metadata:
@@ -536,24 +558,24 @@ class Handler(BaseHTTPRequestHandler):
                     self.send(200, manage(vault, payload))
                 elif self.path == '/api/mutopia/publish':
                     if not self.cloud_config():
-                        self.send(503, {'error': 'MUTOPIA公開にはクラウド版IDEA VAULTが必要です。'})
+                        self.send(503, {'error': 'MUTOPIA���J�ɂ̓N���E�h��IDEA VAULT���K�v�ł��B'})
                     elif not isinstance(payload.get('record_id'), str) or len(payload['record_id']) > 128:
-                        self.send(400, {'error': '公開する記録を確認してください。'})
+                        self.send(400, {'error': '���J����L�^���m�F���Ă��������B'})
                     elif payload.get('published') is True:
                         self.send(200, vault.publish_to_mutopia(payload['record_id']))
                     elif payload.get('published') is False:
                         self.send(200, vault.unpublish_from_mutopia(payload['record_id']))
                     else:
-                        self.send(400, {'error': '公開状態を指定してください。'})
+                        self.send(400, {'error': '���J��Ԃ��w�肵�Ă��������B'})
                 elif self.path == '/api/logout' and self.cloud_config():
                     vault.call('/auth/v1/logout', 'POST', {})
                     self.send(200, {'status': 'signed_out'})
                 else:
-                    self.send(404, {'error': '見つかりません'})
+                    self.send(404, {'error': '������܂���'})
         except (ValueError, KeyError, TypeError) as error:
             self.send(400, {'error': str(error)})
         except OSError:
-            self.send(500, {'error': '保存できませんでした。空き容量と保存先の権限を確認してください。'})
+            self.send(500, {'error': '�ۑ��ł��܂���ł����B�󂫗e�ʂƕۑ���̌������m�F���Ă��������B'})
 
 
 def main():
@@ -569,24 +591,24 @@ def main():
     if cloud:
         url, public_key, owner = (os.environ.get(n, '') for n in ('SUPABASE_URL', 'SUPABASE_PUBLISHABLE_KEY', 'IDEA_VAULT_OWNER_ID'))
         if not re.fullmatch(r'https://[a-z0-9-]+\.supabase\.co', url) or not public_key or not owner:
-            parser.error('SupabaseのURL・publishable/anonキー・本人のユーザーUUIDを設定してください')
+            parser.error('Supabase��URL�Epublishable/anon�L�[�E�{�l�̃��[�U�[UUID��ݒ肵�Ă�������')
         try:
             uuid.UUID(owner)
         except ValueError:
-            parser.error('IDEA_VAULT_OWNER_IDは本人のSupabaseユーザーUUIDにしてください')
+            parser.error('IDEA_VAULT_OWNER_ID�͖{�l��Supabase���[�U�[UUID�ɂ��Ă�������')
         if public_key.startswith('sb_secret_'):
-            parser.error('service-role/secretキーを使わずpublishable/anonキーを設定してください')
+            parser.error('service-role/secret�L�[���g�킸publishable/anon�L�[��ݒ肵�Ă�������')
         if public_key.startswith('eyJ'):
             try:
                 claims = public_key.split('.')[1]
                 role = json.loads(base64.urlsafe_b64decode(claims + '=' * (-len(claims) % 4))).get('role')
                 if role != 'anon':
-                    parser.error('Supabaseキーはanonキーを使用してください')
+                    parser.error('Supabase�L�[��anon�L�[���g�p���Ă�������')
             except (ValueError, IndexError):
-                parser.error('Supabaseの公開キー形式を確認してください')
+                parser.error('Supabase�̌��J�L�[�`�����m�F���Ă�������')
         config = (url, public_key, owner)
     if public and (not public_host or not cloud):
-        parser.error('Render無料公開ではSupabase保存と本人ログインの設定が必須です。ローカル保存へは切り替えません')
+        parser.error('Render�������J�ł�Supabase�ۑ��Ɩ{�l���O�C���̐ݒ肪�K�{�ł��B���[�J���ۑ��ւ͐؂�ւ��܂���')
     server = ThreadingHTTPServer(('0.0.0.0' if public else '127.0.0.1', args.port), Handler)
     server.public_host = public_host
     server.password = password if not cloud else None
