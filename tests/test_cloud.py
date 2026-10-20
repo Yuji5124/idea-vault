@@ -156,7 +156,11 @@ class SupabaseDouble(BaseHTTPRequestHandler):
             self.reply(200, {})
         elif path.startswith('/storage/v1/object/authenticated/idea-vault/'):
             name = unquote(path.split('/idea-vault/', 1)[1])
-            self.reply(200, self.server.objects[name], mime='application/json' if name.endswith('.json') else None)
+            contents = self.server.objects.get(name)
+            if contents is None:
+                self.reply(404, {})
+            else:
+                self.reply(200, contents, mime='application/json' if name.endswith('.json') else None)
         else:
             self.reply(404, {})
 
@@ -260,6 +264,31 @@ class CloudTests(unittest.TestCase):
         moved = self.call('/api/records')['records'][0]['files'][0]
         self.assertEqual(self.call(f"/api/file/{target['id']}/{moved['id']}?thumbnail=1"), thumbnail)
         self.assertEqual(len(self.provider.objects), 4, 'keep source and destination image copies for recovery')
+
+    def test_missing_cloud_thumbnail_object_falls_back_to_original(self):
+        from io import BytesIO
+        from PIL import Image
+
+        original_buffer = BytesIO()
+        Image.new('RGB', (1200, 800), (96, 148, 202)).save(original_buffer, format='PNG')
+        thumbnail_buffer = BytesIO()
+        Image.new('RGB', (320, 213), (96, 148, 202)).save(thumbnail_buffer, format='WEBP')
+        original = original_buffer.getvalue()
+        result = self.call('/api/import', {'groups': [{'title': 'missing thumbnail', 'files': [
+            file('photo.png', original) | {'thumbnail': base64.b64encode(thumbnail_buffer.getvalue()).decode()}
+        ]}]})
+        record = result['records'][0]
+        saved = record['files'][0]
+        thumbnail_key = f'{OWNER}/{record["id"]}/{saved["thumbnail_storage_path"]}'
+        del self.provider.objects[thumbnail_key]
+
+        preview = self.call(f"/api/file/{record['id']}/{saved['id']}?thumbnail=1")
+        with Image.open(BytesIO(preview)) as image:
+            self.assertEqual(image.size, (320, 213))
+            self.assertEqual(image.format, 'WEBP')
+        original_key = f'{OWNER}/{record["id"]}/{saved.get("storage_path", saved["path"])}'
+        self.assertEqual(self.provider.objects[original_key], original)
+        self.assertEqual(self.provider.rows[record['id']]['files'][0]['thumbnail_storage_path'], saved['thumbnail_storage_path'])
 
     def test_restart_does_not_depend_on_render_local_disk(self):
         self.call('/api/create', {'title': 'survives restart'})
