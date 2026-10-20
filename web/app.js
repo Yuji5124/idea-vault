@@ -32,7 +32,7 @@ function render(){
   $('#sectionTitle').replaceChildren(document.createTextNode(view==='TRASH'?'TRASH':order==='title'?'TITLE':view==='TIMELINE'?'TIMELINE':view==='INBOX'?'INBOX':'RECENT'),el('span','',view==='TRASH'?'削除前に復元できます':order==='title'?'タイトル順':view==='TIMELINE'?'資料の日付ごとの記録':q?'検索結果':'最近のひらめき'));
   const root=$('#records');thumbnailObserver?.disconnect();root.replaceChildren();$('#empty').hidden=shown.length>0;
   $('#empty h3').textContent=view==='TRASH'?'ゴミ箱は空です。':records.some(r=>!r.deleted_at)?'該当する記録がありません。':'最初のひらめきを、ここに。';$('#empty p').textContent=view==='TRASH'?'削除した記録はここに保管され、復元または完全削除できます。':records.some(r=>!r.deleted_at)?'キーワード・日付・絞り込み条件を変えてみてください。':'ファイルをドロップするか、短いメモから始めましょう。';
-  const pageSize=60,pageCount=Math.max(1,Math.ceil(shown.length/pageSize));page=Math.min(page,pageCount-1);const pageRecords=shown.slice(page*pageSize,(page+1)*pageSize);
+  const pageSize=30,pageCount=Math.max(1,Math.ceil(shown.length/pageSize));page=Math.min(page,pageCount-1);const pageRecords=shown.slice(page*pageSize,(page+1)*pageSize);
   if(order==='title'){const grid=el('div','grid');pageRecords.forEach(r=>grid.append(card(r)));root.append(grid);renderPagination(pageCount);return;}
   const grouped=new Map();for(const r of pageRecords){const day=recordDay(r);if(!grouped.has(day))grouped.set(day,[]);grouped.get(day).push(r);}
   for(const [day,group]of grouped){root.append(el('h3','date-heading',day));const grid=el('div','grid');group.forEach(r=>grid.append(card(r)));root.append(grid);}
