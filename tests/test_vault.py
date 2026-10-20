@@ -123,6 +123,28 @@ class ApiTests(unittest.TestCase):
         with self.request('/') as response:
             self.assertIn(b'IDEA VAULT', response.read())
 
+    def test_saved_thumbnail_is_served_separately_without_changing_original(self):
+        from io import BytesIO
+        from PIL import Image
+
+        original = BytesIO()
+        Image.new('RGB', (1200, 800), (30, 90, 150)).save(original, format='PNG')
+        thumbnail = BytesIO()
+        Image.new('RGB', (320, 213), (30, 90, 150)).save(thumbnail, format='WEBP')
+        original_bytes, thumbnail_bytes = original.getvalue(), thumbnail.getvalue()
+        image = file('idea.png', original_bytes)
+        image['thumbnail'] = {'name': 'thumbnail.webp', 'data': base64.b64encode(thumbnail_bytes).decode()}
+        record = self.server.vault.create('thumbnail fixture', [image])
+        saved = record['files'][0]
+        original_path = self.server.vault.root / record['folder'] / saved['path']
+
+        with self.request(f"/api/file/{record['id']}/{saved['thumbnail']['id']}") as response:
+            self.assertEqual(response.headers['Content-Type'], 'image/webp')
+            self.assertEqual(response.read(), thumbnail_bytes)
+        with self.request(f"/api/file/{record['id']}/{saved['id']}") as response:
+            self.assertEqual(response.read(), original_bytes)
+        self.assertEqual(original_path.read_bytes(), original_bytes)
+
     def test_cross_origin_write_rejected(self):
         with self.assertRaises(HTTPError) as raised:
             self.request('/api/create', {'title': 'bad'}, 'https://evil.example')

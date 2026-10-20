@@ -34,6 +34,7 @@
     <div class="filters"><label class="searchbox"><span>⌕</span><input id="search" type="search" placeholder="タイトル、タグ、原理から探す…" aria-label="キーワード検索"><kbd>/</kbd></label><select id="rating" aria-label="JIMA FILTERで絞り込む"><option value="">JIMA FILTER · すべて</option><option>GOOD</option><option>HOLD</option><option>BAD</option><option>未評価</option></select></div>
     <div class="organize-filters"><label>カテゴリー<select id="categoryFilter"><option value="">すべて</option></select></label><label>資料の日付から<input id="dateFrom" type="date"></label><label>資料の日付まで<input id="dateTo" type="date"></label><label>並び順<select id="sortOrder"><option value="newest">日付が新しい順</option><option value="oldest">日付が古い順</option><option value="title">タイトル順</option></select></label><button class="secondary" id="clearOrganization">日付をリセット</button></div>
     <div id="records"></div>
+    <nav id="pagination" class="pagination" aria-label="記録一覧ページ" hidden></nav>
     <div class="empty" id="empty"><span>✳</span><h3>最初のひらめきを、ここに。</h3><p>ファイルをドロップするか、短いメモから始めましょう。</p></div>
   </section>
   <footer><span>IDEA VAULT</span><span>SOURCE → PRINCIPLE → IDEA → VISUAL</span><span>KEEP THE SPARK ALIVE.</span></footer>
